@@ -2,8 +2,10 @@ package edu.rice.habanero.benchmarks;
 
 import edu.rice.habanero.actors.AkkaActorState;
 
+import jdk.jfr.Recording;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
+import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -61,6 +63,8 @@ public class BenchmarkRunner {
         final List<Double> rawExecTimes = new ArrayList<>(iterations);
 
         {
+            Recording jfrRecording = new Recording();
+            jfrRecording.start();
 
             System.out.println("Execution - Iterations: ");
             for (int i = 0; i < iterations; i++) {
@@ -81,6 +85,19 @@ public class BenchmarkRunner {
                 catch (InterruptedException e) {
                 }
             }
+
+            jfrRecording.stop();
+            try {
+                if (filename != null) {
+                    Path jfrPath = Path.of(filename + ".jfr");
+                    jfrRecording.dump(jfrPath);
+                }
+            }
+            catch (Exception e) {
+                System.out.println("Failed to write JFR recording");
+            }
+            jfrRecording.close();
+
             System.out.println();
 
         }
