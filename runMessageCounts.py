@@ -2,6 +2,7 @@
 import subprocess
 import os
 import sys
+import json
 
 """
 This script runs the benchmarks to compute message counts.
@@ -43,10 +44,32 @@ opts = {
 
 iter=10
 
+def count_messages(filename):
+    subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
+    total_app_msgs = 0
+    total_ctrl_msgs = 0
+    with open(f'{filename}.json', 'r') as f:
+        data = json.load(f)
+        events = data['recording']['events']
+        for event in events:
+            if "mac.jfr.ActorBlockedEvent" in event['type']:
+                total_app_msgs += event['values']['appMsgCount']
+                total_ctrl_msgs += event['values']['ctrlMsgCount']
+            elif "mac.jfr.ProcessingMessages" in event['type']:
+                total_ctrl_msgs += event['values']['numMessages']
+            elif "crgc.jfr.EntryFlushEvent" in event['type']:
+                total_app_msgs += event['values']['recvCount']
+            elif "crgc.jfr.ProcessingEntries" in event['type']:
+                total_ctrl_msgs += event['values']['numEntries']
+    with open(f'{filename}.csv', 'w') as f:
+        f.write(f'{total_app_msgs}, {total_ctrl_msgs}')
+        print(f'Wrote {filename}.csv')
+    os.remove(f"{filename}.json")
+
 # Check if there are any .jfr files in the directory. If so, abort.
 for file in os.listdir('.'):
-    if file.endswith('.jfr') or file.endswith('.json'):
-        print("There are .jfr or .json files in the directory. Please delete or move them first. Aborting.")
+    if file.endswith('.jfr') or file.endswith('.json') or file.endswith('.csv'):
+        print("There are .jfr, .json, or .csv files in the directory. Please delete or move them first. Aborting.")
         sys.exit()
 
 # Run benchmarks.
@@ -61,8 +84,6 @@ for benchmark in benchmarks.keys():
             ["sbt",
             f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=off",
             f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
-        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
-        os.remove(f"{filename}.jfr")
 
         # MAC
         filename = f"{benchmark}-n{param}-MAC"
@@ -70,8 +91,6 @@ for benchmark in benchmarks.keys():
             ["sbt",
             f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=on",
             f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
-        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
-        os.remove(f"{filename}.jfr")
 
         # CRGC on-block
         filename = f"{benchmark}-n{param}-crgc-onblock"
@@ -79,8 +98,6 @@ for benchmark in benchmarks.keys():
             ["sbt",
             f"-Dgc.crgc.collection-style=on-block", f"-Duigc.engine=crgc",
             f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
-        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
-        os.remove(f"{filename}.jfr")
 
         # CRGC wave
         filename = f"{benchmark}-n{param}-crgc-wave"
@@ -88,5 +105,16 @@ for benchmark in benchmarks.keys():
             ["sbt",
             f"-Dgc.crgc.collection-style=wave", f"-Duigc.engine=crgc",
             f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
-        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
-        os.remove(f"{filename}.jfr")
+
+# Process the data
+for benchmark in benchmarks.keys():
+    opt = opts[benchmark]
+    for param in benchmarks[benchmark]:
+        filename = f"{benchmark}-n{param}-WRC"
+        count_messages(filename)
+        filename = f"{benchmark}-n{param}-MAC"
+        count_messages(filename)
+        filename = f"{benchmark}-n{param}-crgc-onblock"
+        count_messages(filename)
+        filename = f"{benchmark}-n{param}-crgc-wave"
+        count_messages(filename)
