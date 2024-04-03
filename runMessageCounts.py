@@ -1,4 +1,11 @@
 #!/bin/bash
+import subprocess
+import os
+import sys
+
+"""
+This script runs the benchmarks to compute message counts.
+"""
 
 benchmarks = {
     "apsp.ApspAkkaGCActorBenchmark": [100, 200, 300, 400, 500],
@@ -36,42 +43,50 @@ opts = {
 
 iter=10
 
-import subprocess
+# Check if there are any .jfr files in the directory. If so, abort.
+for file in os.listdir('.'):
+    if file.endswith('.jfr') or file.endswith('.json'):
+        print("There are .jfr or .json files in the directory. Please delete or move them first. Aborting.")
+        sys.exit()
+
+# Run benchmarks.
 for benchmark in benchmarks.keys():
     opt = opts[benchmark]
     for param in benchmarks[benchmark]:
-
-        # Without GC
-        filename = f"{benchmark}-n{param}-nogc.csv"
-        subprocess.run(
-            ["sbt",
-            f"-Duigc.engine=manual",
-            f'"runMain {benchmark} -iter {iter} -filename {filename} {opt} {param}"'])
+        classname = "edu.rice.habanero.benchmarks." + benchmark
 
         # WRC
-        filename = f"{benchmark}-n{param}-WRC.csv"
+        filename = f"{benchmark}-n{param}-WRC"
         subprocess.run(
             ["sbt",
             f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=off",
-            f'"runMain {benchmark} -iter {iter} -filename {filename} {opt} {param}"'])
+            f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
+        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
+        os.remove(f"{filename}.jfr")
 
         # MAC
-        filename = f"{benchmark}-n{param}-MAC.csv"
+        filename = f"{benchmark}-n{param}-MAC"
         subprocess.run(
             ["sbt",
             f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=on",
-            f'"runMain {benchmark} -iter {iter} -filename {filename} {opt} {param}"'])
+            f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
+        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
+        os.remove(f"{filename}.jfr")
 
         # CRGC on-block
-        filename = f"{benchmark}-n{param}-crgc-onblock.csv"
+        filename = f"{benchmark}-n{param}-crgc-onblock"
         subprocess.run(
             ["sbt",
             f"-Dgc.crgc.collection-style=on-block", f"-Duigc.engine=crgc",
-            f'"runMain {benchmark} -iter {iter} -filename {filename} {opt} {param}"'])
+            f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
+        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
+        os.remove(f"{filename}.jfr")
 
         # CRGC wave
-        filename = f"{benchmark}-n{param}-crgc-wave.csv"
+        filename = f"{benchmark}-n{param}-crgc-wave"
         subprocess.run(
             ["sbt",
             f"-Dgc.crgc.collection-style=wave", f"-Duigc.engine=crgc",
-            f'"runMain {benchmark} -iter {iter} -filename {filename} {opt} {param}"'])
+            f'runMain {classname} -iter {iter} -jfr-filename {filename}.jfr {opt} {param}'])
+        subprocess.run(f"jfr print --json {filename}.jfr > {filename}.json", shell=True)
+        os.remove(f"{filename}.jfr")

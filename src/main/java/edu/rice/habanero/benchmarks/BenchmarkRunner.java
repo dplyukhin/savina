@@ -20,6 +20,7 @@ public class BenchmarkRunner {
 
     protected static int iterations = 12;
     static String filename = null;
+    static String jfrFilename = null;
 
     private static void parseArgs(final String[] args) throws Exception {
         final int argLimit = args.length - 1;
@@ -32,6 +33,9 @@ public class BenchmarkRunner {
             }
             if (argName.equalsIgnoreCase("-filename")) {
                 filename = argValue;
+            }
+            if (argName.equalsIgnoreCase("-jfr-filename")) {
+                jfrFilename = argValue;
             }
         }
     }
@@ -63,9 +67,14 @@ public class BenchmarkRunner {
         final List<Double> rawExecTimes = new ArrayList<>(iterations);
 
         {
-            Recording jfrRecording = new Recording();
-            jfrRecording.start();
+            // Start JFR Recording
+            Recording jfrRecording = null;
+            if (jfrFilename != null) {
+                jfrRecording = new Recording();
+                jfrRecording.start();
+            }
 
+            // Execute the benchmarks
             System.out.println("Execution - Iterations: ");
             for (int i = 0; i < iterations; i++) {
                 final long startTime = System.nanoTime();
@@ -86,17 +95,19 @@ public class BenchmarkRunner {
                 }
             }
 
-            jfrRecording.stop();
-            try {
-                if (filename != null) {
-                    Path jfrPath = Path.of(filename + ".jfr");
-                    jfrRecording.dump(jfrPath);
+            // End JFR Recording
+            if (jfrFilename != null && jfrRecording != null) {
+                jfrRecording.stop();
+                try {
+                        Path jfrPath = Path.of(jfrFilename);
+                        jfrRecording.dump(jfrPath);
+                        System.out.println("Wrote JFR recording to " + jfrPath);
                 }
+                catch (Exception e) {
+                    System.out.println("Failed to write JFR recording");
+                }
+                jfrRecording.close();
             }
-            catch (Exception e) {
-                System.out.println("Failed to write JFR recording");
-            }
-            jfrRecording.close();
 
             System.out.println();
 
