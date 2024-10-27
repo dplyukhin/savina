@@ -2,7 +2,7 @@ val org = "edu.rice.habanero"
 val libVersion = "0.1.0-SNAPSHOT"
 val pekkoVersion = "1.1.2-uigc-SNAPSHOT"
 
-ThisBuild / scalaVersion     := "2.13.8"
+ThisBuild / scalaVersion     := "2.13.15"
 ThisBuild / version          := libVersion
 ThisBuild / organization     := org
 
