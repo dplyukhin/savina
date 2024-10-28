@@ -1,6 +1,7 @@
 .idea/
 .metals/
 .vscode/
+.bloop/
 venv/
 .DS_Store
 target/
