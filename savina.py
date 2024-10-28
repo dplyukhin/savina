@@ -17,20 +17,26 @@ iter=30
 benchmarks = {
     "apsp.ApspAkkaGCActorBenchmark": [100, 200, 300, 400, 500],
     "astar.GuidedSearchAkkaGCActorBenchmark": [10, 20, 30, 40, 50],
-    "count.CountingAkkaGCActorBenchmark": [1000000, 2000000, 3000000, 4000000, 5000000, 6000000],
+    "count.CountingAkkaGCActorBenchmark": [1000000, 2000000, 3000000, 4000000, 5000000],
     "fib.FibonacciAkkaGCActorBenchmark": [22, 23, 24, 25, 26], 
-    "nqueenk.NQueensAkkaGCActorBenchmark": [10, 11, 12, 13, 14, 15],
+    "nqueenk.NQueensAkkaGCActorBenchmark": [9, 10, 11, 12, 13],
     "quicksort.QuickSortAkkaGCActorBenchmark": [500000, 1000000, 1500000, 2000000, 2500000],
-    "radixsort.RadixSortAkkaGCActorBenchmark": [50000, 60000, 70000, 80000, 90000, 100000],
+    "radixsort.RadixSortAkkaGCActorBenchmark": [50000, 60000, 70000, 80000, 90000],
     "recmatmul.MatMulAkkaGCActorBenchmark": [1024, 512, 256, 128, 64],
 }
+
+# Which benchmarks to skip in the simple evaluation.
+skippable_benchmarks = [
+    "nqueenk.NQueensAkkaGCActorBenchmark",       # This one is slow.
+    "radixsort.RadixSortAkkaGCActorBenchmark",   # This one is not consistent.
+]
 
 # Pyplot configuration.
 plt.style.use('tableau-colorblind10')
 plt.rcParams['figure.figsize'] = [6, 4]
 
 # Types of garbage collectors to use
-gc_types = ["nogc", "wrc", "mac", "crgc-onblock", "crgc-wave"]
+gc_types = ["nogc", "wrc", "crgc-onblock", "crgc-wave"]
 
 ############################## BENCHMARK RUNNER ##############################
 
@@ -92,28 +98,14 @@ def run_count_benchmark(benchmark, gc_type, param):
     filename = raw_count_filename(benchmark, param, gc_type)
     run_benchmark(benchmark, gc_type, param, f"-jfr-filename {filename}")
 
-def run_time_benchmarks(benchmarks, gc_types, args):
-    if raw_times_exist() and not args.append:
-        print("There are .csv files in the directory. Either remove them or re-run with the --append flag. Aborting.")
-        sys.exit()
-
-    for benchmark in benchmarks:
-        for param in benchmarks[benchmark]:
-            for gc_type in gc_types:
-                run_time_benchmark(benchmark, gc_type, param)
-
-def run_count_benchmarks(benchmarks, gc_types, args):
-    if raw_counts_exist():
-        print("There are .jfr files in the directory. Please delete them first. Aborting.")
-        sys.exit()
-
-    for benchmark in benchmarks:
-        for param in benchmarks[benchmark]:
-            for gc_type in gc_types:
-                run_count_benchmark(benchmark, gc_type, param)
-
 
 ############################## DATA PROCESSING ##############################
+
+def processed_time_filename(benchmark):
+    return f"processed_data/{benchmark}.csv"
+
+def processed_count_filename(benchmark, param, gc_type):
+    return f"processed_data/{benchmark}-{param}-{gc_type}-count.csv"
 
 def get_time_stats(benchmark, param, gc_type):
     """
@@ -124,32 +116,32 @@ def get_time_stats(benchmark, param, gc_type):
         lines = [float(line) for line in file]
         return np.average(lines), np.std(lines)
 
-def process_time_data(benchmarks, gc_types, args):
-    for benchmark in benchmarks:
-        d = {}
-        for param in benchmarks[benchmark]:
-            d[param] = [param]
+def process_time_data(benchmark, params):
+    d = {}
+    for param in params:
+        d[param] = [param]
 
-            nogc_avg, nogc_std = get_time_stats(benchmark, param, "nogc")
-            d[param].append(nogc_avg)
-            d[param].append(nogc_std)
+        nogc_avg, nogc_std = get_time_stats(benchmark, param, "nogc")
+        d[param].append(nogc_avg)
+        d[param].append(nogc_std)
 
-            wrc_avg, wrc_std = get_time_stats(benchmark, param, "wrc")
-            d[param].append(wrc_avg)
-            d[param].append(wrc_std)
+        wrc_avg, wrc_std = get_time_stats(benchmark, param, "wrc")
+        d[param].append(wrc_avg)
+        d[param].append(wrc_std)
 
-            onblk_avg, onblk_std = get_time_stats(benchmark, param, "crgc-block")
-            d[param].append(onblk_avg)
-            d[param].append(onblk_std)
+        onblk_avg, onblk_std = get_time_stats(benchmark, param, "crgc-block")
+        d[param].append(onblk_avg)
+        d[param].append(onblk_std)
 
-            wave_avg, wave_std = get_time_stats(benchmark, param, "crgc-wave")
-            d[param].append(wave_avg)
-            d[param].append(wave_std)
+        wave_avg, wave_std = get_time_stats(benchmark, param, "crgc-wave")
+        d[param].append(wave_avg)
+        d[param].append(wave_std)
 
-        with open(f"processed_data/{benchmark}.csv", "w") as output:
-            output.write('"N", "no GC", "no GC error", "WRC", "WRC error", "CRGC (on-block)", "CRGC error (on-block)", "CRGC (wave)", "CRGC error (wave)"\n')
-            for param in benchmarks[benchmark]:
-                output.write(",".join([str(p) for p in d[param]]) + "\n") 
+    filename = processed_time_filename(benchmark)
+    with open(filename, "w") as output:
+        output.write('"N", "no GC", "no GC error", "WRC", "WRC error", "CRGC (on-block)", "CRGC error (on-block)", "CRGC (wave)", "CRGC error (wave)"\n')
+        for param in params:
+            output.write(",".join([str(p) for p in d[param]]) + "\n") 
 
 def count_messages(benchmark, param, gc_type):
     filename = raw_count_filename(benchmark, param, gc_type)
@@ -169,23 +161,11 @@ def count_messages(benchmark, param, gc_type):
                 total_app_msgs += event['values']['recvCount']
             elif "crgc.jfr.ProcessingEntries" in event['type']:
                 total_ctrl_msgs += event['values']['numEntries']
-    with open(f'processed_data/{filename}.csv', 'w') as f:
-        f.write(f'{total_app_msgs}, {total_ctrl_msgs}')
-        print(f'Wrote processed_data/{filename}.csv')
     os.remove(f"{filename}.json")
 
-def process_count_data(benchmarks, gc_types, args):
-    for benchmark in benchmarks:
-        for param in benchmarks[benchmark]:
-            filename = f"{benchmark}-n{param}-WRC"
-            count_messages(filename)
-            filename = f"{benchmark}-n{param}-MAC"
-            count_messages(filename)
-            filename = f"{benchmark}-n{param}-crgc-onblock"
-            count_messages(filename)
-            filename = f"{benchmark}-n{param}-crgc-wave"
-            count_messages(filename)
-
+    filename = processed_count_filename(benchmark, param, gc_type)
+    with open(filename, 'w') as f:
+        f.write(f'{total_app_msgs}, {total_ctrl_msgs}')
 
 ############################## PLOTTING ##############################
 
@@ -194,7 +174,8 @@ def plot_ordinary_overhead(benchmark):
     Plot a benchmark with overhead in the y-axis.
     """
     # Read the CSV file into a pandas DataFrame
-    df = pd.read_csv(f'processed_data/{benchmark}.csv')
+    filename = processed_time_filename(benchmark)
+    df = pd.read_csv(filename)
 
     # Extract the data for x-axis, y-axis, and error bars from the DataFrame
     x_values = df.iloc[:, 0]
@@ -227,10 +208,11 @@ def plot_ordinary_overhead(benchmark):
 
 def plot_ordinary_time(benchmark):
     """
-    Plot any benchmark with execution time in the y-axis.
+    Plot a benchmark with execution time in the y-axis.
     """
     # Read the CSV file into a pandas DataFrame
-    df = pd.read_csv(f'processed_data/{benchmark}.csv')
+    filename = processed_time_filename(benchmark)
+    df = pd.read_csv(filename)
 
     # Extract the data for x-axis, y-axis, and error bars from the DataFrame
     x_values = df.iloc[:, 0]
@@ -265,10 +247,44 @@ def plot_ordinary_time(benchmark):
     print(f"Wrote {benchmark}-time.pdf")
     #plt.show()
 
-def plot_data():
-    for bm in benchmarks.keys():
-        plot_ordinary_overhead(bm)
-        plot_ordinary_time(bm)
+############################## RUNNER ##############################
+
+class BenchmarkRunner:
+
+    def __init__(self, benchmarks, gc_types, args):
+        self.benchmarks = benchmarks
+        self.gc_types = gc_types
+        self.args = args
+
+    def run_time_benchmarks():
+        if raw_times_exist() and not self.args.append:
+            print("There are .csv files in the directory. Either remove them or re-run with the --append flag. Aborting.")
+            sys.exit()
+
+        for benchmark in self.benchmarks:
+            for param in benchmarks[benchmark]:
+                for gc_type in self.gc_types:
+                    run_time_benchmark(benchmark, gc_type, param)
+
+    def run_count_benchmarks():
+        if raw_counts_exist():
+            print("There are .jfr files in the directory. Please delete them first. Aborting.")
+            sys.exit()
+
+        for benchmark in self.benchmarks:
+            for param in benchmarks[benchmark]:
+                for gc_type in self.gc_types:
+                    run_count_benchmark(benchmark, gc_type, param)
+
+    def process_time_data():
+        for bm in self.benchmarks:
+            params = benchmarks[bm]
+            process_time_data(bm, params)
+
+    def plot_time_data():
+        for bm in self.benchmarks:
+            plot_ordinary_overhead(bm)
+            plot_ordinary_time(bm)
 
 
 ############################## MAIN ##############################
@@ -295,20 +311,17 @@ if __name__ == "__main__":
     os.makedirs('figures', exist_ok=True)
 
     if args.command == "simple_eval":
-        run_time_benchmarks(benchmarks, gc_types, args)
-        process_time_data()
-        plot_data()
+        bms = [bm for bm in benchmarks if bm not in skippable_benchmarks]
+        runner = BenchmarkRunner(bms, gc_types, args)
+        runner.run_time_benchmarks()
+        runner.process_time_data()
+        runner.plot_time_data()
     elif args.command == "full_eval":
-        run_time_benchmarks(benchmarks, gc_types, args)
-        run_count_benchmarks(benchmarks, gc_types, args)
-        process_time_data()
-        process_count_data()
-        plot_data()
-    elif args.command == "process":
-        process_time_data()
-        process_count_data()
-    elif args.command == "plot":
-        plot_data()
+        bms = keys(benchmarks)
+        runner = BenchmarkRunner(bms, gc_types, args)
+        runner.run_time_benchmarks()
+        runner.process_time_data()
+        runner.plot_time_data()
     else:
         parser.print_help()
 
