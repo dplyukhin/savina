@@ -305,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--iter",
         type=int,
-        default=30,
+        default=20,
         help="Number of times to run each benchmark."
     )
     args = parser.parse_args()
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         runner.process_time_data()
         runner.plot_time_data()
     elif args.command == "full_eval":
-        bms = keys(benchmarks)
+        bms = benchmarks.keys()
         runner = BenchmarkRunner(bms, gc_types, args)
         runner.run_time_benchmarks()
         runner.process_time_data()
