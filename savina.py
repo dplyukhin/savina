@@ -26,6 +26,7 @@ benchmarks = {
 
 # Which benchmarks to skip in the simple evaluation.
 skippable_benchmarks = [
+    "astar.GuidedSearchAkkaGCActorBenchmark",    # This one is slow.
     "nqueenk.NQueensAkkaGCActorBenchmark",       # This one is slow.
     "radixsort.RadixSortAkkaGCActorBenchmark",   # This one is not consistent.
 ]
