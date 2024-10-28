@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import sys
 import os
@@ -24,15 +25,12 @@ benchmarks = {
     "recmatmul.MatMulAkkaGCActorBenchmark": [1024, 512, 256, 128, 64],
 }
 
-# Where to write raw data.
-raw_data_dir = "raw_data"
-processed_data_dir = "processed_data"
-figures_dir = "figures"
-
 # Pyplot configuration.
 plt.style.use('tableau-colorblind10')
 plt.rcParams['figure.figsize'] = [6, 4]
 
+# Types of garbage collectors to use
+gc_types = ["nogc", "wrc", "mac", "crgc-onblock", "crgc-wave"]
 
 ############################## BENCHMARK RUNNER ##############################
 
@@ -47,141 +45,118 @@ opts = {
     "recmatmul.MatMulAkkaGCActorBenchmark": "-n",
 }
 
-def run_time_benchmarks():
-    """
-    Run the benchmarks, measuring execution time and writing
-    CSV files to the raw data directory.
-    """
-    # Create the raw data directory if it doesn't exist
-    if not os.path.exists(raw_data_dir):
-        os.makedirs(raw_data_dir)
+def raw_time_filename(benchmark, param, gc_type):
+    return f"raw_data/{benchmark}-n{param}-{gc_type}.csv"
 
-    # Run the benchmarks
-    for benchmark in benchmarks.keys():
-        opt = opts[benchmark]
+def raw_times_exist():
+    for file in os.listdir('raw_data'):
+        if file.endswith('.csv'):
+            return True
+    return False
+
+def raw_count_filename(benchmark, param, gc_type):
+    return f"raw_data/{benchmark}-n{param}-{gc_type}.jfr"
+
+def raw_counts_exist():
+    for file in os.listdir('raw_data'):
+        if file.endswith('.jfr'):
+            return True
+    return False
+
+def run_benchmark(benchmark, gc_type, param, options):
+    classname = "edu.rice.habanero.benchmarks." + benchmark
+    opt = opts[benchmark]
+
+    gc_args = []
+    if gc_type == "nogc":
+        gc_args = ["-Duigc.engine=manual"]
+    elif gc_type == "wrc":
+        gc_args = ["-Duigc.engine=mac", "-Duigc.mac.cycle-detection=off"]
+    elif gc_type == "mac":
+        gc_args = ["-Duigc.engine=mac", "-Duigc.mac.cycle-detection=on"]
+    elif gc_type == "crgc-onblock":
+        gc_args = ["-Dgc.crgc.collection-style=on-block", "-Duigc.engine=crgc"]
+    elif gc_type == "crgc-wave":
+        gc_args = ["-Dgc.crgc.collection-style=wave", "-Duigc.engine=crgc"]
+    else:
+        print(f"Invalid garbage collector type '{gc_type}'. Valid options are: {gc_types.join(', ')}")
+        sys.exit(1)
+
+    subprocess.run(["sbt"] + gc_args + [f'runMain {classname} -iter {iter} {options} {opt} {param}'])
+
+def run_time_benchmark(benchmark, gc_type, param):
+    filename = raw_time_filename(benchmark, param, gc_type)
+    run_benchmark(benchmark, gc_type, param, f"-filename {filename}")
+
+def run_count_benchmark(benchmark, gc_type, param):
+    filename = raw_count_filename(benchmark, param, gc_type)
+    run_benchmark(benchmark, gc_type, param, f"-jfr-filename {filename}")
+
+def run_time_benchmarks(benchmarks, gc_types, args):
+    if raw_times_exist() and not args.append:
+        print("There are .csv files in the directory. Either remove them or re-run with the --append flag. Aborting.")
+        sys.exit()
+
+    for benchmark in benchmarks:
         for param in benchmarks[benchmark]:
-            classname = "edu.rice.habanero.benchmarks." + benchmark
+            for gc_type in gc_types:
+                run_time_benchmark(benchmark, gc_type, param)
 
-            # No GC
-            filename = f"{benchmark}-n{param}-nogc"
-            subprocess.run(
-                ["sbt",
-                f"-Duigc.engine=manual",
-                f'runMain {classname} -iter {iter} -filename {raw_data_dir}/{filename}.csv {opt} {param}'])
+def run_count_benchmarks(benchmarks, gc_types, args):
+    if raw_counts_exist():
+        print("There are .jfr files in the directory. Please delete them first. Aborting.")
+        sys.exit()
 
-            # WRC
-            filename = f"{benchmark}-n{param}-WRC"
-            subprocess.run(
-                ["sbt",
-                f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=off",
-                f'runMain {classname} -iter {iter} -filename {raw_data_dir}/{filename}.csv {opt} {param}'])
-
-            # CRGC on-block
-            filename = f"{benchmark}-n{param}-crgc-onblock"
-            subprocess.run(
-                ["sbt",
-                f"-Dgc.crgc.collection-style=on-block", f"-Duigc.engine=crgc",
-                f'runMain {classname} -iter {iter} -filename {raw_data_dir}/{filename}.csv {opt} {param}'])
-
-            # CRGC wave
-            filename = f"{benchmark}-n{param}-crgc-wave"
-            subprocess.run(
-                ["sbt",
-                f"-Dgc.crgc.collection-style=wave", f"-Duigc.engine=crgc",
-                f'runMain {classname} -iter {iter} -filename {raw_data_dir}/{filename}.csv {opt} {param}'])
-
-
-def run_count_benchmarks():
-    """
-    Run the benchmarks, measuring message counts and writing
-    JFR files to the raw data directory.
-    """
-    # Create the raw data directory if it doesn't exist
-    if not os.path.exists(raw_data_dir):
-        os.makedirs(raw_data_dir)
-
-    for benchmark in benchmarks.keys():
-        opt = opts[benchmark]
+    for benchmark in benchmarks:
         for param in benchmarks[benchmark]:
-            classname = "edu.rice.habanero.benchmarks." + benchmark
+            for gc_type in gc_types:
+                run_count_benchmark(benchmark, gc_type, param)
 
-            # WRC
-            filename = f"{benchmark}-n{param}-WRC"
-            subprocess.run(
-                ["sbt",
-                f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=off",
-                f'runMain {classname} -iter {iter} -jfr-filename {raw_data_dir}/{filename}.jfr {opt} {param}'])
-
-            # MAC
-            filename = f"{benchmark}-n{param}-MAC"
-            subprocess.run(
-                ["sbt",
-                f"-Duigc.engine=mac", "-Duigc.mac.cycle-detection=on",
-                f'runMain {classname} -iter {iter} -jfr-filename {raw_data_dir}/{filename}.jfr {opt} {param}'])
-
-            # CRGC on-block
-            filename = f"{benchmark}-n{param}-crgc-onblock"
-            subprocess.run(
-                ["sbt",
-                f"-Dgc.crgc.collection-style=on-block", f"-Duigc.engine=crgc",
-                f'runMain {classname} -iter {iter} -jfr-filename  {raw_data_dir}/{filename}.jfr {opt} {param}'])
-
-            # CRGC wave
-            filename = f"{benchmark}-n{param}-crgc-wave"
-            subprocess.run(
-                ["sbt",
-                f"-Dgc.crgc.collection-style=wave", f"-Duigc.engine=crgc",
-                f'runMain {classname} -iter {iter} -jfr-filename {raw_data_dir}/{filename}.jfr {opt} {param}'])
 
 ############################## DATA PROCESSING ##############################
 
-def get_stats(filename):
+def get_time_stats(benchmark, param, gc_type):
     """
     Read the CSV file and return the average and standard deviation.
     """
-    with open(f"{raw_data_dir}/{filename}") as file:
+    filename = raw_time_filename(benchmark, param, gc_type)
+    with open(filename) as file:
         lines = [float(line) for line in file]
         return np.average(lines), np.std(lines)
 
-def process_time_data():
-    """
-    Process the raw data into a format that can be plotted.
-    """
-    # Create the processed data directory if it doesn't exist
-    if not os.path.exists(processed_data_dir):
-        os.makedirs(processed_data_dir)
-
-    for benchmark in benchmarks.keys():
+def process_time_data(benchmarks, gc_types, args):
+    for benchmark in benchmarks:
         d = {}
         for param in benchmarks[benchmark]:
             d[param] = [param]
 
-            nogc_avg, nogc_std = get_stats(f"{benchmark}-n{param}-nogc.csv")
+            nogc_avg, nogc_std = get_time_stats(benchmark, param, "nogc")
             d[param].append(nogc_avg)
             d[param].append(nogc_std)
 
-            wrc_avg, wrc_std = get_stats(f"{benchmark}-n{param}-WRC.csv")
+            wrc_avg, wrc_std = get_time_stats(benchmark, param, "wrc")
             d[param].append(wrc_avg)
             d[param].append(wrc_std)
 
-            onblk_avg, onblk_std = get_stats(f"{benchmark}-n{param}-crgc-onblock.csv")
+            onblk_avg, onblk_std = get_time_stats(benchmark, param, "crgc-block")
             d[param].append(onblk_avg)
             d[param].append(onblk_std)
 
-            wave_avg, wave_std = get_stats(f"{benchmark}-n{param}-crgc-wave.csv")
+            wave_avg, wave_std = get_time_stats(benchmark, param, "crgc-wave")
             d[param].append(wave_avg)
             d[param].append(wave_std)
 
-        with open(f"{processed_data_dir}/{benchmark}.csv", "w") as output:
+        with open(f"processed_data/{benchmark}.csv", "w") as output:
             output.write('"N", "no GC", "no GC error", "WRC", "WRC error", "CRGC (on-block)", "CRGC error (on-block)", "CRGC (wave)", "CRGC error (wave)"\n')
             for param in benchmarks[benchmark]:
                 output.write(",".join([str(p) for p in d[param]]) + "\n") 
 
-def count_messages(filename):
-    subprocess.run(f"jfr print --json {raw_data_dir}/{filename}.jfr > {raw_data_dir}/{filename}.json", shell=True)
+def count_messages(benchmark, param, gc_type):
+    filename = raw_count_filename(benchmark, param, gc_type)
+    subprocess.run(f"jfr print --json {filename} > {filename}.json", shell=True)
     total_app_msgs = 0
     total_ctrl_msgs = 0
-    with open(f'{raw_data_dir}/{filename}.json', 'r') as f:
+    with open(f'{filename}.json', 'r') as f:
         data = json.load(f)
         events = data['recording']['events']
         for event in events:
@@ -194,15 +169,13 @@ def count_messages(filename):
                 total_app_msgs += event['values']['recvCount']
             elif "crgc.jfr.ProcessingEntries" in event['type']:
                 total_ctrl_msgs += event['values']['numEntries']
-    with open(f'{processed_data_dir}/{filename}.csv', 'w') as f:
+    with open(f'processed_data/{filename}.csv', 'w') as f:
         f.write(f'{total_app_msgs}, {total_ctrl_msgs}')
-        print(f'Wrote {processed_data_dir}/{filename}.csv')
-    os.remove(f"{raw_data_dir}/{filename}.json")
+        print(f'Wrote processed_data/{filename}.csv')
+    os.remove(f"{filename}.json")
 
-def process_count_data():
-    # Process the data
-    for benchmark in benchmarks.keys():
-        opt = opts[benchmark]
+def process_count_data(benchmarks, gc_types, args):
+    for benchmark in benchmarks:
         for param in benchmarks[benchmark]:
             filename = f"{benchmark}-n{param}-WRC"
             count_messages(filename)
@@ -221,7 +194,7 @@ def plot_ordinary_overhead(benchmark):
     Plot a benchmark with overhead in the y-axis.
     """
     # Read the CSV file into a pandas DataFrame
-    df = pd.read_csv(f'{processed_data_dir}/{benchmark}.csv')
+    df = pd.read_csv(f'processed_data/{benchmark}.csv')
 
     # Extract the data for x-axis, y-axis, and error bars from the DataFrame
     x_values = df.iloc[:, 0]
@@ -248,7 +221,7 @@ def plot_ordinary_overhead(benchmark):
 
     # Show the plot
     plt.legend()
-    plt.savefig(f'{figures_dir}/{benchmark}-overhead.pdf', dpi=500)
+    plt.savefig(f'figures/{benchmark}-overhead.pdf', dpi=500)
     print(f"Wrote {benchmark}-overhead.pdf")
 
 
@@ -257,7 +230,7 @@ def plot_ordinary_time(benchmark):
     Plot any benchmark with execution time in the y-axis.
     """
     # Read the CSV file into a pandas DataFrame
-    df = pd.read_csv(f'{processed_data_dir}/{benchmark}.csv')
+    df = pd.read_csv(f'processed_data/{benchmark}.csv')
 
     # Extract the data for x-axis, y-axis, and error bars from the DataFrame
     x_values = df.iloc[:, 0]
@@ -288,15 +261,11 @@ def plot_ordinary_time(benchmark):
 
     # Show the plot
     plt.legend()
-    plt.savefig(f'{figures_dir}/{benchmark}-time.pdf', dpi=500)
+    plt.savefig(f'figures/{benchmark}-time.pdf', dpi=500)
     print(f"Wrote {benchmark}-time.pdf")
     #plt.show()
 
 def plot_data():
-    # Create the figres directory if it doesn't exist
-    if not os.path.exists(figures_dir):
-        os.makedirs(figures_dir)
-
     for bm in benchmarks.keys():
         plot_ordinary_overhead(bm)
         plot_ordinary_time(bm)
@@ -305,27 +274,41 @@ def plot_data():
 ############################## MAIN ##############################
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Invalid argument. Argument may be 'runtime', 'count', 'process', or 'plot'.")
-        sys.exit(1)
-    if sys.argv[1] == "runtime":
-        # Check if there are any .csv files in the directory. If the "--append" flag is not used, abort.
-        for file in os.listdir(raw_data_dir):
-            if file.endswith('.csv') and "--append" not in sys.argv:
-                print("There are .csv files in the directory. Either remove them or re-run with the --append flag. Aborting.")
-                sys.exit()
-        run_time_benchmarks()
-    elif sys.argv[1] == "count":
-        # Check if there are any .jfr files in the directory. If so, abort.
-        for file in os.listdir('.'):
-            if file.endswith('.jfr') or file.endswith('.json') or file.endswith('.csv'):
-                print("There are .jfr, .json, or .csv files in the directory. Please delete or move them first. Aborting.")
-                sys.exit()
-        run_count_benchmarks()
-    elif sys.argv[1] == "process":
+    parser = argparse.ArgumentParser(
+        description='Run Savina benchmarks and plot results.'
+    )
+    parser.add_argument(
+        "command", 
+        choices=["simple_eval", "full_eval", "run", "process", "plot"], 
+        help="What command to run."
+    )
+    parser.add_argument(
+        "--append", 
+        action="store_true", 
+        help="Append benchmark times to raw data, instead of overwriting them."
+    )
+    args = parser.parse_args()
+
+    # Create raw data, processed data, and figures directories if they don't already exist.
+    os.makedirs('raw_data', exist_ok=True)
+    os.makedirs('processed_data', exist_ok=True)
+    os.makedirs('figures', exist_ok=True)
+
+    if args.command == "simple_eval":
+        run_time_benchmarks(benchmarks, gc_types, args)
         process_time_data()
-    elif sys.argv[1] == "plot":
+        plot_data()
+    elif args.command == "full_eval":
+        run_time_benchmarks(benchmarks, gc_types, args)
+        run_count_benchmarks(benchmarks, gc_types, args)
+        process_time_data()
+        process_count_data()
+        plot_data()
+    elif args.command == "process":
+        process_time_data()
+        process_count_data()
+    elif args.command == "plot":
         plot_data()
     else:
-        print("Invalid argument. Argument may be 'runtime', 'count', 'process', or 'plot'.")
-        sys.exit(1)
+        parser.print_help()
+
