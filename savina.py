@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import subprocess
 import sys
@@ -9,9 +11,6 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 ############################## CONFIGURATION ##############################
-
-# Number of times to run each benchmark.
-iter=30
 
 # Which benchmarks to run, and which parameters to run them on.
 benchmarks = {
@@ -52,7 +51,7 @@ opts = {
 }
 
 def raw_time_filename(benchmark, param, gc_type):
-    return f"raw_data/{benchmark}-n{param}-{gc_type}.csv"
+    return f"raw_data/{benchmark}-{param}-{gc_type}.csv"
 
 def raw_times_exist():
     for file in os.listdir('raw_data'):
@@ -69,7 +68,7 @@ def raw_counts_exist():
             return True
     return False
 
-def run_benchmark(benchmark, gc_type, param, options):
+def run_benchmark(benchmark, gc_type, param, options, args):
     classname = "edu.rice.habanero.benchmarks." + benchmark
     opt = opts[benchmark]
 
@@ -88,15 +87,15 @@ def run_benchmark(benchmark, gc_type, param, options):
         print(f"Invalid garbage collector type '{gc_type}'. Valid options are: {gc_types.join(', ')}")
         sys.exit(1)
 
-    subprocess.run(["sbt"] + gc_args + [f'runMain {classname} -iter {iter} {options} {opt} {param}'])
+    subprocess.run(["sbt"] + gc_args + [f'runMain {classname} -iter {args.iter} {options} {opt} {param}'])
 
-def run_time_benchmark(benchmark, gc_type, param):
+def run_time_benchmark(benchmark, gc_type, param, args):
     filename = raw_time_filename(benchmark, param, gc_type)
-    run_benchmark(benchmark, gc_type, param, f"-filename {filename}")
+    run_benchmark(benchmark, gc_type, param, f"-filename {filename}", args)
 
-def run_count_benchmark(benchmark, gc_type, param):
+def run_count_benchmark(benchmark, gc_type, param, args):
     filename = raw_count_filename(benchmark, param, gc_type)
-    run_benchmark(benchmark, gc_type, param, f"-jfr-filename {filename}")
+    run_benchmark(benchmark, gc_type, param, f"-jfr-filename {filename}", args)
 
 
 ############################## DATA PROCESSING ##############################
@@ -129,7 +128,7 @@ def process_time_data(benchmark, params):
         d[param].append(wrc_avg)
         d[param].append(wrc_std)
 
-        onblk_avg, onblk_std = get_time_stats(benchmark, param, "crgc-block")
+        onblk_avg, onblk_std = get_time_stats(benchmark, param, "crgc-onblock")
         d[param].append(onblk_avg)
         d[param].append(onblk_std)
 
@@ -256,7 +255,7 @@ class BenchmarkRunner:
         self.gc_types = gc_types
         self.args = args
 
-    def run_time_benchmarks():
+    def run_time_benchmarks(self):
         if raw_times_exist() and not self.args.append:
             print("There are .csv files in the directory. Either remove them or re-run with the --append flag. Aborting.")
             sys.exit()
@@ -264,9 +263,9 @@ class BenchmarkRunner:
         for benchmark in self.benchmarks:
             for param in benchmarks[benchmark]:
                 for gc_type in self.gc_types:
-                    run_time_benchmark(benchmark, gc_type, param)
+                    run_time_benchmark(benchmark, gc_type, param, self.args)
 
-    def run_count_benchmarks():
+    def run_count_benchmarks(self):
         if raw_counts_exist():
             print("There are .jfr files in the directory. Please delete them first. Aborting.")
             sys.exit()
@@ -276,12 +275,12 @@ class BenchmarkRunner:
                 for gc_type in self.gc_types:
                     run_count_benchmark(benchmark, gc_type, param)
 
-    def process_time_data():
+    def process_time_data(self):
         for bm in self.benchmarks:
             params = benchmarks[bm]
             process_time_data(bm, params)
 
-    def plot_time_data():
+    def plot_time_data(self):
         for bm in self.benchmarks:
             plot_ordinary_overhead(bm)
             plot_ordinary_time(bm)
@@ -295,13 +294,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "command", 
-        choices=["simple_eval", "full_eval", "run", "process", "plot"], 
+        choices=["simple_eval", "full_eval"], 
         help="What command to run."
     )
     parser.add_argument(
         "--append", 
         action="store_true", 
         help="Append benchmark times to raw data, instead of overwriting them."
+    )
+    parser.add_argument(
+        "--iter",
+        type=int,
+        default=30,
+        help="Number of times to run each benchmark."
     )
     args = parser.parse_args()
 
