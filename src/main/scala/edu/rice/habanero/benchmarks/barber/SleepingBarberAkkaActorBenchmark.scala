@@ -35,15 +35,7 @@ object SleepingBarberAkkaActorBenchmark {
 
       val idGenerator = new AtomicLong(0)
 
-      system = AkkaActorState.newActorSystem("SleepingBarber")
-
-      val barber = system.actorOf(Props(new BarberActor()))
-      val room = system.actorOf(Props(new WaitingRoomActor(SleepingBarberConfig.W, barber)))
-      val factoryActor = system.actorOf(Props(new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room)))
-
-
-      factoryActor ! Start
-
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(idGenerator, ctx)), "SleepingBarber")
       AkkaActorState.awaitTermination(system)
 
       track("CustomerAttempts", idGenerator.get())
@@ -72,6 +64,16 @@ object SleepingBarberAkkaActorBenchmark {
     def refs: Iterable[ActorRef[_]] = List(customer)
   }
 
+  private class Master(idGenerator: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+      val barber = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BarberActor(ctx) })
+      val room = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new WaitingRoomActor(SleepingBarberConfig.W, barber, ctx) })
+      val factoryActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room, ctx) })
+      factoryActor ! Start
+    }
+
+    override def process(msg: Msg): Unit = ()
+  }
 
   private class WaitingRoomActor(capacity: Int, barber: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 

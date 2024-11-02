@@ -29,22 +29,8 @@ object PhilosopherAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("Philosopher")
-
       val counter = new AtomicLong(0)
-
-
-      val arbitrator = system.actorOf(Props(new ArbitratorActor(PhilosopherConfig.N)))
-
-      val philosophers = Array.tabulate[ActorRef[Msg]](PhilosopherConfig.N)(i => {
-        val loopActor = system.actorOf(Props(new PhilosopherActor(i, PhilosopherConfig.M, counter, arbitrator)))
-        loopActor
-      })
-
-      philosophers.foreach(loopActor => {
-        loopActor ! StartMessage()
-      })
-
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(counter, ctx)), "Philosopher")
       AkkaActorState.awaitTermination(system)
 
       println("  Num retries: " + counter.get())
@@ -74,6 +60,20 @@ object PhilosopherAkkaActorBenchmark {
 
   case class DeniedMessage() extends Msg with NoRefs
 
+  private class Master(counter: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+      val arbitrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ArbitratorActor(PhilosopherConfig.N, ctx) })
+      val philosophers = Array.tabulate[ActorRef[Msg]](PhilosopherConfig.N)(i => {
+        val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PhilosopherActor(i, PhilosopherConfig.M, counter, ctx) })
+        loopActor ! Rfmsg(arbitrator)
+        loopActor
+      })
+      philosophers.foreach(loopActor => {
+        loopActor ! StartMessage()
+      })
+    }
+    override def process(msg: Msg): Unit = ()
+  }
 
   private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 

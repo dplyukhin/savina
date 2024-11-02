@@ -69,7 +69,7 @@ object UctAkkaActorBenchmark {
    * @author xinghuizhao
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
-  protected class RootActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class RootActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val ran: Random = new Random(2)
     private var height: Int = 1
@@ -230,7 +230,7 @@ object UctAkkaActorBenchmark {
     private final val dummy: Int = 40000
   }
 
-  protected class NodeActor(myHeight: Int, myId: Int, myCompSize: Int, urgent: Boolean, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class NodeActor(myHeight: Int, myId: Int, myCompSize: Int, urgent: Boolean, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var myRoot: ActorRef[Msg] = null
     private var myParent: ActorRef[Msg] = null

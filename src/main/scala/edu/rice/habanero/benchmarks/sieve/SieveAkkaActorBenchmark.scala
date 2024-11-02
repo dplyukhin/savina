@@ -27,13 +27,7 @@ object SieveAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("Sieve")
-
-      val producerActor = system.actorOf(Props(new NumberProducerActor(SieveConfig.N)))
-
-      val filterActor = system.actorOf(Props(new PrimeFilterActor(1, 2, SieveConfig.M)))
-
-      producerActor ! RefMsg(filterActor)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "Sieve")
 
       AkkaActorState.awaitTermination(system)
     }
@@ -52,6 +46,16 @@ object SieveAkkaActorBenchmark {
     override def refs: Iterable[ActorRef[_]] = List(actorRef)
   }
   case class StringMsg(value: String) extends Msg with NoRefs
+
+
+  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+      val producerActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new NumberProducerActor(SieveConfig.N, ctx) })
+      val filterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(1, 2, SieveConfig.M, ctx) })
+      producerActor ! RefMsg(filterActor)
+    }
+    override def process(msg: Msg): Unit = ()
+  }
 
   private class NumberProducerActor(limit: Long, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     override def process(msg: Msg) {

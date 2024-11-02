@@ -83,15 +83,13 @@ object ProdConsAkkaActorBenchmark {
       }
       )
 
-      override def onPostStart() {
-        consumers.foreach(loopConsumer => {
-          availableConsumers.append(loopConsumer)
-        })
+      consumers.foreach(loopConsumer => {
+        availableConsumers.append(loopConsumer)
+      })
 
-        producers.foreach(loopProducer => {
-          loopProducer ! ProduceDataMessage
-        })
-      }
+      producers.foreach(loopProducer => {
+        loopProducer ! ProduceDataMessage
+      })
 
       override def onPreExit() {
         consumers.foreach(loopConsumer => {

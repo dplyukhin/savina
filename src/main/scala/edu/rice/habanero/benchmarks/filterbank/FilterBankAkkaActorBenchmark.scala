@@ -30,25 +30,8 @@ object FilterBankAkkaActorBenchmark {
     }
     private var system: ActorSystem[Msg] = _
     def runIteration() {
-      val numSimulations: Int = FilterBankConfig.NUM_SIMULATIONS
-      val numChannels: Int = FilterBankConfig.NUM_CHANNELS
-      val numColumns: Int = FilterBankConfig.NUM_COLUMNS
-      val H: Array[Array[Double]] = FilterBankConfig.H
-      val F: Array[Array[Double]] = FilterBankConfig.F
-      val sinkPrintRate: Int = FilterBankConfig.SINK_PRINT_RATE
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "FilterBank")
 
-      system = AkkaActorState.newActorSystem("FilterBank")
-
-      // create the pipeline of actors
-      val producer = system.actorOf(Props(new ProducerActor(numSimulations)))
-      val sink = system.actorOf(Props(new SinkActor(sinkPrintRate)))
-      val combine = system.actorOf(Props(new CombineActor(sink)))
-      val integrator = system.actorOf(Props(new IntegratorActor(numChannels, combine)))
-      val branches = system.actorOf(Props(new BranchesActor(numChannels, numColumns, H, F, integrator)))
-      val source = system.actorOf(Props(new SourceActor(producer, branches)))
-
-      // start the pipeline
-      producer ! new NextMessage(source)
 
       AkkaActorState.awaitTermination(system)
     }
@@ -60,6 +43,9 @@ object FilterBankAkkaActorBenchmark {
 
 
   private trait Msg extends Message
+  private case class ProducerNextActorMsg(producer: ActorRef[Msg], nextActor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(producer, nextActor)
+  }
   private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = Some(actor)
   }
@@ -71,6 +57,34 @@ object FilterBankAkkaActorBenchmark {
   private case class ValueMessage(value: Double) extends Msg with NoRefs
   private case class SourcedValueMessage(sourceId: Int, value: Double) extends Msg with NoRefs
   private case class CollectionMessage[T](values: util.Collection[T]) extends Msg with NoRefs
+
+
+  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+      val numSimulations: Int = FilterBankConfig.NUM_SIMULATIONS
+      val numChannels: Int = FilterBankConfig.NUM_CHANNELS
+      val numColumns: Int = FilterBankConfig.NUM_COLUMNS
+      val H: Array[Array[Double]] = FilterBankConfig.H
+      val F: Array[Array[Double]] = FilterBankConfig.F
+      val sinkPrintRate: Int = FilterBankConfig.SINK_PRINT_RATE
+
+      // create the pipeline of actors
+      val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(numSimulations, ctx) })
+      val sink = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SinkActor(sinkPrintRate, ctx) })
+      val combine = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CombineActor(ctx) })
+      combine ! Rfmsg(sink)
+      val integrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new IntegratorActor(numChannels, ctx) })
+      integrator ! Rfmsg(combine)
+      val branches = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BranchesActor(numChannels, numColumns, H, F, ctx) })
+      branches ! Rfmsg(integrator)
+      val source = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SourceActor(ctx) })
+      source ! ProducerNextActorMsg(producer, branches)
+
+      // start the pipeline
+      producer ! new NextMessage(source)
+    }
+    override def process(msg: Msg): Unit = ()
+  }
 
   private class ProducerActor(numSimulations: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
@@ -95,13 +109,18 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class SourceActor(producer: ActorRef[Msg], nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class SourceActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var producer: ActorRef[Msg] = _
+    private var nextActor: ActorRef[Msg] = _
     private final val maxValue: Int = 1000
     private var current: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
+        case ProducerNextActorMsg(producer, nextActor) =>
+          this.producer = producer
+          this.nextActor = nextActor
         case BootMessage =>
           nextActor ! new ValueMessage(current)
           current = (current + 1) % maxValue
@@ -140,13 +159,10 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
-      val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BankActor(i, numColumns, H(i), F(i), ctx)})
-      actor ! Rfmsg(nextActor)
-      actor
-    })
+    private var nextActor: ActorRef[Msg] = _
+    private var banks: Array[ActorRef[Msg]] = _
 
     protected override def onPostExit() {
       for (loopBank <- banks) {
@@ -156,6 +172,13 @@ object FilterBankAkkaActorBenchmark {
 
     override def process(theMsg: Msg) {
       theMsg match {
+        case Rfmsg(x) =>
+          nextActor = x
+          banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
+            val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BankActor(i, numColumns, H(i), F(i), ctx)})
+            actor ! Rfmsg(nextActor)
+            actor
+          })
         case _: ValueMessage =>
           for (loopBank <- banks) {
             loopBank ! theMsg

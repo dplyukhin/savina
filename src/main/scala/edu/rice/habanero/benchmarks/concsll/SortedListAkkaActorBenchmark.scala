@@ -71,8 +71,7 @@ object SortedListAkkaActorBenchmark {
     private final val sortedList = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SortedList(ctx)})
     private var numWorkersTerminated: Int = 0
 
-    override def onPostStart() {
-
+    {
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})

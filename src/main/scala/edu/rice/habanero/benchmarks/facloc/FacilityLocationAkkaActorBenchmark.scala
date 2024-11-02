@@ -31,16 +31,7 @@ object FacilityLocationAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("FacilityLocation")
-
-      val threshold = FacilityLocationConfig.ALPHA * FacilityLocationConfig.F
-      val boundingBox = new Box(0, 0, FacilityLocationConfig.GRID_SIZE, FacilityLocationConfig.GRID_SIZE)
-
-      val rootQuadrant = system.actorOf(Props(new QuadrantActor(
-        null, Position.ROOT, boundingBox, threshold, 0,
-        new java.util.ArrayList[Point](), 1, -1, new java.util.ArrayList[Point]())))
-
-      val producer = system.actorOf(Props(new ProducerActor(rootQuadrant)))
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "FacilityLocation")
 
       AkkaActorState.awaitTermination(system)
     }
@@ -65,14 +56,26 @@ object FacilityLocationAkkaActorBenchmark {
   private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg with NoRefs
 
 
+  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+
+      val threshold = FacilityLocationConfig.ALPHA * FacilityLocationConfig.F
+      val boundingBox = new Box(0, 0, FacilityLocationConfig.GRID_SIZE, FacilityLocationConfig.GRID_SIZE)
+
+      val rootQuadrant = ctx.spawnAnonymous(Behaviors.setup[Msg]( ctx => new QuadrantActor(
+        Position.ROOT, boundingBox, threshold, 0,
+        new java.util.ArrayList[Point](), 1, -1, new java.util.ArrayList[Point](), ctx)))
+
+      val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(ctx) })
+      producer ! Rfmsg(rootQuadrant)
+    }
+    override def process(msg: Msg): Unit = ()
+  }
+
   private class ProducerActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var consumer: ActorRef[Msg] = _
     private var itemsProduced = 0
-
-    override def onPostStart(): Unit = {
-      produceCustomer()
-    }
 
     private def produceCustomer(): Unit = {
       consumer ! (CustomerMsg(ctx.self, Point.random(FacilityLocationConfig.GRID_SIZE)))
@@ -81,7 +84,9 @@ object FacilityLocationAkkaActorBenchmark {
 
     override def process(message: Msg) {
       message match {
-        case Rfmsg(x) => this.consumer = x
+        case Rfmsg(x) =>
+          this.consumer = x
+          produceCustomer()
         case msg: NextCustomerMsg =>
           if (itemsProduced < FacilityLocationConfig.NUM_POINTS) {
             produceCustomer()

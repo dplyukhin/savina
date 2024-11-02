@@ -28,17 +28,7 @@ object BitonicSortAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("BitonicSort")
-
-      val validationActor = system.actorOf(Props(new ValidationActor(BitonicSortConfig.N)))
-
-      val adapterActor = system.actorOf(Props(new DataValueAdapterActor(validationActor)))
-
-      val kernelActor = system.actorOf(Props(new BitonicSortKernelActor(BitonicSortConfig.N, true, adapterActor)))
-
-      val sourceActor = system.actorOf(Props(new IntSourceActor(BitonicSortConfig.N, BitonicSortConfig.M, BitonicSortConfig.S, kernelActor)))
-
-      sourceActor ! StartMessage()
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "BitonicSort")
 
       AkkaActorState.awaitTermination(system)
     }
@@ -63,6 +53,20 @@ object BitonicSortAkkaActorBenchmark {
   private case class StartMessage() extends Msg with NoRefs
   private case class ExitMessage() extends Msg with NoRefs
 
+
+  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    {
+      val validationActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ValidationActor(BitonicSortConfig.N, ctx) })
+      val adapterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DataValueAdapterActor(ctx) })
+      adapterActor ! Rfmsg(validationActor)
+      val kernelActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BitonicSortKernelActor(BitonicSortConfig.N, true, ctx) })
+      kernelActor ! Rfmsg(adapterActor)
+      val sourceActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new IntSourceActor(BitonicSortConfig.N, BitonicSortConfig.M, BitonicSortConfig.S, ctx) })
+      sourceActor ! Rfmsg(kernelActor)
+      sourceActor ! StartMessage()
+    }
+    override def process(msg: Msg): Unit = ()
+  }
 
   private class ValueDataAdapterActor(orderId: Int, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {

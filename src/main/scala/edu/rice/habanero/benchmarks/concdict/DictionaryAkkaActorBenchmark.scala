@@ -74,8 +74,7 @@ object DictionaryAkkaActorBenchmark {
     private final val dictionary = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Dictionary(DictionaryConfig.DATA_MAP, ctx)})
     private var numWorkersTerminated: Int = 0
 
-    override def onPostStart() {
-
+    {
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})
