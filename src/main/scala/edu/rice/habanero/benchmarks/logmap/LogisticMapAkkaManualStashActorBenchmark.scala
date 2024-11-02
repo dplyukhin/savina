@@ -27,10 +27,10 @@ object LogisticMapAkkaManualStashActorBenchmark {
     def printArgInfo() {
       LogisticMapConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("LogisticMap")
+      system = AkkaActorState.newActorSystem("LogisticMap")
 
       val master = system.actorOf(Props(new Master()))
       master ! StartMessage

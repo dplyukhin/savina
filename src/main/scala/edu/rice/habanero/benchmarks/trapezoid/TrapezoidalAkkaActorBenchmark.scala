@@ -24,10 +24,10 @@ object TrapezoidalAkkaActorBenchmark {
     def printArgInfo() {
       TrapezoidalConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("Trapezoidal")
+      system = AkkaActorState.newActorSystem("Trapezoidal")
 
       val numWorkers: Int = TrapezoidalConfig.W
       val precision: Double = (TrapezoidalConfig.R - TrapezoidalConfig.L) / TrapezoidalConfig.N

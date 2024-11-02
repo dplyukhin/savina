@@ -27,11 +27,11 @@ object DictionaryAkkaActorBenchmark {
     def printArgInfo() {
       DictionaryConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
       val numWorkers: Int = DictionaryConfig.NUM_ENTITIES
       val numMessagesPerWorker: Int = DictionaryConfig.NUM_MSGS_PER_WORKER
-      val system = AkkaActorState.newActorSystem("Dictionary")
+      system = AkkaActorState.newActorSystem("Dictionary")
 
       val master = system.actorOf(Props(new Master(numWorkers, numMessagesPerWorker)))
 

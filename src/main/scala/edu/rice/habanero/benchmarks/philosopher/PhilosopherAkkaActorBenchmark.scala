@@ -26,10 +26,10 @@ object PhilosopherAkkaActorBenchmark {
     def printArgInfo() {
       PhilosopherConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("Philosopher")
+      system = AkkaActorState.newActorSystem("Philosopher")
 
       val counter = new AtomicLong(0)
 

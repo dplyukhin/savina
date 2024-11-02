@@ -27,12 +27,12 @@ object PiPrecisionAkkaActorBenchmark {
     def printArgInfo() {
       PiPrecisionConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
       val numWorkers: Int = PiPrecisionConfig.NUM_WORKERS
       val precision: Int = PiPrecisionConfig.PRECISION
 
-      val system = AkkaActorState.newActorSystem("PiPrecision")
+      system = AkkaActorState.newActorSystem("PiPrecision")
 
       val master = system.actorOf(Props(new Master(numWorkers, precision)))
 

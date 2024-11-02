@@ -30,11 +30,12 @@ object SleepingBarberAkkaActorBenchmark {
       SleepingBarberConfig.printArgs()
     }
 
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
       val idGenerator = new AtomicLong(0)
 
-      val system = AkkaActorState.newActorSystem("SleepingBarber")
+      system = AkkaActorState.newActorSystem("SleepingBarber")
 
       val barber = system.actorOf(Props(new BarberActor()))
       val room = system.actorOf(Props(new WaitingRoomActor(SleepingBarberConfig.W, barber)))

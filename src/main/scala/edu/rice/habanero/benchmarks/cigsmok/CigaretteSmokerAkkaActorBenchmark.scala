@@ -25,10 +25,10 @@ object CigaretteSmokerAkkaActorBenchmark {
     def printArgInfo() {
       CigaretteSmokerConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("CigaretteSmoker")
+      system = AkkaActorState.newActorSystem("CigaretteSmoker")
 
       val arbiterActor = system.actorOf(Props(new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S)))
 

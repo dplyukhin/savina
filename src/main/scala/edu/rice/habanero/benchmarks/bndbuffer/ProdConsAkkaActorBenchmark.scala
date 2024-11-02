@@ -25,10 +25,10 @@ object ProdConsAkkaActorBenchmark {
     def printArgInfo() {
       ProdConsBoundedBufferConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("ProdCons")
+      system = AkkaActorState.newActorSystem("ProdCons")
 
       val manager = system.actorOf(Props(
         new ManagerActor(

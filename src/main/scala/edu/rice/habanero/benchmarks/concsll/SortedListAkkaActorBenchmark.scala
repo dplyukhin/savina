@@ -24,11 +24,11 @@ object SortedListAkkaActorBenchmark {
     def printArgInfo() {
       SortedListConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
       val numWorkers: Int = SortedListConfig.NUM_ENTITIES
       val numMessagesPerWorker: Int = SortedListConfig.NUM_MSGS_PER_WORKER
-      val system = AkkaActorState.newActorSystem("SortedList")
+      system = AkkaActorState.newActorSystem("SortedList")
 
       val master = system.actorOf(Props(new Master(numWorkers, numMessagesPerWorker)))
 

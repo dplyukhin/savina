@@ -27,9 +27,9 @@ object SucOverRelaxAkkaActorBenchmark {
       SucOverRelaxConfig.printArgs()
       SucOverRelaxConfig.initialize()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
-      val system = AkkaActorState.newActorSystem("SucOverRelax")
+      system = AkkaActorState.newActorSystem("SucOverRelax")
 
       val dataLevel = SucOverRelaxConfig.N
       val sorRunner = system.actorOf(Props(new SorRunner(dataLevel)))

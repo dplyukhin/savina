@@ -28,10 +28,10 @@ object FacilityLocationAkkaActorBenchmark {
     def printArgInfo() {
       FacilityLocationConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("FacilityLocation")
+      system = AkkaActorState.newActorSystem("FacilityLocation")
 
       val threshold = FacilityLocationConfig.ALPHA * FacilityLocationConfig.F
       val boundingBox = new Box(0, 0, FacilityLocationConfig.GRID_SIZE, FacilityLocationConfig.GRID_SIZE)

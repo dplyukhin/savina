@@ -28,7 +28,7 @@ object FilterBankAkkaActorBenchmark {
     def printArgInfo() {
       FilterBankConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
       val numSimulations: Int = FilterBankConfig.NUM_SIMULATIONS
       val numChannels: Int = FilterBankConfig.NUM_CHANNELS
@@ -37,7 +37,7 @@ object FilterBankAkkaActorBenchmark {
       val F: Array[Array[Double]] = FilterBankConfig.F
       val sinkPrintRate: Int = FilterBankConfig.SINK_PRINT_RATE
 
-      val system = AkkaActorState.newActorSystem("FilterBank")
+      system = AkkaActorState.newActorSystem("FilterBank")
 
       // create the pipeline of actors
       val producer = system.actorOf(Props(new ProducerActor(numSimulations)))

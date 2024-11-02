@@ -24,10 +24,10 @@ object SieveAkkaActorBenchmark {
     def printArgInfo() {
       SieveConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("Sieve")
+      system = AkkaActorState.newActorSystem("Sieve")
 
       val producerActor = system.actorOf(Props(new NumberProducerActor(SieveConfig.N)))
 

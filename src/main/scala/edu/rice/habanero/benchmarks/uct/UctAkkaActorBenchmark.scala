@@ -26,10 +26,10 @@ object UctAkkaActorBenchmark {
     def printArgInfo() {
       UctConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("UCT")
+      system = AkkaActorState.newActorSystem("UCT")
 
       val rootActor = system.actorOf(Props(new RootActor()))
 0      rootActor ! GenerateTreeMessage

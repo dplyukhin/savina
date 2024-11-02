@@ -25,10 +25,10 @@ object BitonicSortAkkaActorBenchmark {
     def printArgInfo() {
       BitonicSortConfig.printArgs()
     }
-
+    private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      val system = AkkaActorState.newActorSystem("BitonicSort")
+      system = AkkaActorState.newActorSystem("BitonicSort")
 
       val validationActor = system.actorOf(Props(new ValidationActor(BitonicSortConfig.N)))
 
