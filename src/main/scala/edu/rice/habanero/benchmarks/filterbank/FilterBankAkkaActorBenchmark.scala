@@ -152,7 +152,7 @@ object FilterBankAkkaActorBenchmark {
   private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
 
     private final val banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
-      context.system.actorOf(Props(new BankActor(i, numColumns, H(i), F(i), nextActor)))
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new BankActor(i, numColumns, H(i), F(i), nextActor, ctx)})
     })
 
     protected override def onPostStart() {
@@ -184,12 +184,12 @@ object FilterBankAkkaActorBenchmark {
 
   private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef[Msg]) extends AkkaActor[Msg] {
 
-    private final val firstActor = context.system.actorOf(Props(new DelayActor(sourceId + ".1", numColumns - 1,
-      context.system.actorOf(Props(new FirFilterActor(sourceId + ".1", numColumns, H,
-        context.system.actorOf(Props(new SampleFilterActor(numColumns,
-          context.system.actorOf(Props(new DelayActor(sourceId + ".2", numColumns - 1,
-            context.system.actorOf(Props(new FirFilterActor(sourceId + ".2", numColumns, F,
-              context.system.actorOf(Props(new TaggedForwardActor(sourceId, integrator))))))))))))))))))
+    private final val firstActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new DelayActor(sourceId + ".1", numColumns - 1,
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new FirFilterActor(sourceId + ".1", numColumns, H,
+        ctx.spawnAnonymous(Behaviors.setup { ctx => new SampleFilterActor(numColumns,
+          ctx.spawnAnonymous(Behaviors.setup { ctx => new DelayActor(sourceId + ".2", numColumns - 1,
+            ctx.spawnAnonymous(Behaviors.setup { ctx => new FirFilterActor(sourceId + ".2", numColumns, F,
+              ctx.spawnAnonymous(Behaviors.setup { ctx => new TaggedForwardActor(sourceId, integrator))))))))))))))))))
 
     protected override def onPostStart() {
       AkkaActorState.startActor(firstActor)

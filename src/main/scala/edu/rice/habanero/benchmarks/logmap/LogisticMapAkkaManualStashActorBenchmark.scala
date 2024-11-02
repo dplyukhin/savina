@@ -59,14 +59,14 @@ object LogisticMapAkkaManualStashActorBenchmark {
     private final val numComputers: Int = LogisticMapConfig.numSeries
     private final val computers = Array.tabulate[ActorRef[Msg]](numComputers)(i => {
       val rate = LogisticMapConfig.startRate + (i * LogisticMapConfig.increment)
-      context.system.actorOf(Props(new RateComputer(rate)))
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new RateComputer(rate, ctx)})
     })
 
     private final val numWorkers: Int = LogisticMapConfig.numSeries
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val rateComputer = computers(i % numComputers)
       val startTerm = i * LogisticMapConfig.increment
-      context.system.actorOf(Props(new SeriesWorker(i, self, rateComputer, startTerm)))
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new SeriesWorker(i, self, rateComputer, startTerm, ctx)})
     })
 
     private var numWorkRequested: Int = 0

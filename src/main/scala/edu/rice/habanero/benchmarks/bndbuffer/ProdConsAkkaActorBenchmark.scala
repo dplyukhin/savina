@@ -70,9 +70,9 @@ object ProdConsAkkaActorBenchmark {
       private var numTerminatedProducers: Int = 0
 
       private val producers = Array.tabulate[ActorRef[Msg]](numProducers)(i =>
-        context.system.actorOf(Props(new ProducerActor(i, self, numItemsPerProducer))))
+        ctx.spawnAnonymous(Behaviors.setup { ctx => new ProducerActor(i, self, numItemsPerProducer, ctx)}))
       private val consumers = Array.tabulate[ActorRef[Msg]](numConsumers)(i =>
-        context.system.actorOf(Props(new ConsumerActor(i, self))))
+        ctx.spawnAnonymous(Behaviors.setup { ctx => new ConsumerActor(i, self, ctx)}))
 
       override def onPostStart() {
         consumers.foreach(loopConsumer => {

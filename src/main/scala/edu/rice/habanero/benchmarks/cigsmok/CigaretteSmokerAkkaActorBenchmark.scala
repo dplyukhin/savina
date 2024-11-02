@@ -54,7 +54,7 @@ object CigaretteSmokerAkkaActorBenchmark {
   private class ArbiterActor(numRounds: Int, numSmokers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i =>
-      context.system.actorOf(Props(new SmokerActor(self))))
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new SmokerActor(self, ctx) }))
     private val random = new PseudoRandom(numRounds * numSmokers)
     private var roundsSoFar = 0
 

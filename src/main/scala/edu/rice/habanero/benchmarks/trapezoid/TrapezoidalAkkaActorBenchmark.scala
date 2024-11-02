@@ -51,7 +51,7 @@ object TrapezoidalAkkaActorBenchmark {
   private class Master(numWorkers: Int) extends GCActor[Msg](ctx) {
 
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i =>
-      context.system.actorOf(Props(new Worker(self, i))))
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, i, ctx)}))
     private var numTermsReceived: Int = 0
     private var resultArea: Double = 0.0
 

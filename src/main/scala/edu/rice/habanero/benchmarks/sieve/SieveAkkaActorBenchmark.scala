@@ -84,7 +84,7 @@ object SieveAkkaActorBenchmark {
         availableLocalPrimes += 1
       } else {
         // Create a new actor to store the new prime
-        nextFilterActor = context.system.actorOf(Props(new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes)))
+        nextFilterActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, ctx)})
         AkkaActorState.startActor(nextFilterActor)
       }
     }

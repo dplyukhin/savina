@@ -60,7 +60,8 @@ object SortedListAkkaActorBenchmark {
   private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
-    private final val sortedList = context.system.actorOf(Props(new SortedList()))
+    private final val sortedList = ctx.spawnAnonymous(Behaviors.setup { ctx => new SortedList(ctx)})
+    ctx.sp
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
@@ -68,7 +69,7 @@ object SortedListAkkaActorBenchmark {
 
       var i: Int = 0
       while (i < numWorkers) {
-        workers(i) = context.system.actorOf(Props(new Worker(self, sortedList, i, numMessagesPerWorker)))
+        workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, sortedList, i, numMessagesPerWorker, ctx)})
         AkkaActorState.startActor(workers(i))
         workers(i) ! DoWorkMessage
         i += 1

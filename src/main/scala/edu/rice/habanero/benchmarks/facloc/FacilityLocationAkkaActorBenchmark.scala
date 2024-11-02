@@ -282,27 +282,27 @@ object FacilityLocationAkkaActorBenchmark {
       val fourthBoundary: Box = new Box(facility.x, boundary.y1, boundary.x2, facility.y)
 
       val customers1 = new util.ArrayList[Point](supportCustomers)
-      val firstChild = context.system.actorOf(Props(new QuadrantActor(
+      val firstChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.TOP_LEFT, firstBoundary, threshold, depth + 1,
-        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers1)))
+        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers1, ctx)})
       AkkaActorState.startActor(firstChild)
 
       val customers2 = new util.ArrayList[Point](supportCustomers)
-      val secondChild = context.system.actorOf(Props(new QuadrantActor(
+      val secondChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.TOP_RIGHT, secondBoundary, threshold, depth + 1,
-        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers2)))
+        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers2, ctx)})
       AkkaActorState.startActor(secondChild)
 
       val customers3 = new util.ArrayList[Point](supportCustomers)
-      val thirdChild = context.system.actorOf(Props(new QuadrantActor(
+      val thirdChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.BOT_LEFT, thirdBoundary, threshold, depth + 1,
-        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers3)))
+        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers3, ctx)})
       AkkaActorState.startActor(thirdChild)
 
       val customers4 = new util.ArrayList[Point](supportCustomers)
-      val fourthChild = context.system.actorOf(Props(new QuadrantActor(
+      val fourthChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.BOT_RIGHT, fourthBoundary, threshold, depth + 1,
-        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers4)))
+        localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers4, ctx)})
       AkkaActorState.startActor(fourthChild)
 
 

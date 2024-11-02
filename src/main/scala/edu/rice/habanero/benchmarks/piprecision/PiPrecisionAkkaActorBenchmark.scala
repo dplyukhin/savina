@@ -56,7 +56,7 @@ object PiPrecisionAkkaActorBenchmark {
 
   private class Master(numWorkers: Int, scale: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => context.system.actorOf(Props(new Worker(self, i))))
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, i, ctx)}))
     private var result: BigDecimal = BigDecimal.ZERO
     private final val tolerance = BigDecimal.ONE.movePointLeft(scale)
     private final val numWorkersTerminated: AtomicInteger = new AtomicInteger(0)

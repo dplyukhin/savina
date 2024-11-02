@@ -63,7 +63,7 @@ object DictionaryAkkaActorBenchmark {
   private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
-    private final val dictionary = context.system.actorOf(Props(new Dictionary(DictionaryConfig.DATA_MAP)))
+    private final val dictionary = ctx.spawnAnonymous(Behaviors.setup { ctx => new Dictionary(DictionaryConfig.DATA_MAP, ctx)})
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
@@ -71,7 +71,7 @@ object DictionaryAkkaActorBenchmark {
 
       var i: Int = 0
       while (i < numWorkers) {
-        workers(i) = context.system.actorOf(Props(new Worker(self, dictionary, i, numMessagesPerWorker)))
+        workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, dictionary, i, numMessagesPerWorker, ctx)})
         AkkaActorState.startActor(workers(i))
         workers(i) ! DoWorkMessage
         i += 1

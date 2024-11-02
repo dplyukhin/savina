@@ -186,7 +186,8 @@ object SleepingBarberAkkaActorBenchmark {
     }
 
     private def sendCustomerToRoom() {
-      val customer = context.system.actorOf(Props(new CustomerActor(idGenerator.incrementAndGet(), self)))
+      val customer = ctx.spawnAnonymous(Behaviors.setup { ctx => new CustomerActor(idGenerator.incrementAndGet(),
+        self, ctx) })
       AkkaActorState.startActor(customer)
 
       sendCustomerToRoom(customer)

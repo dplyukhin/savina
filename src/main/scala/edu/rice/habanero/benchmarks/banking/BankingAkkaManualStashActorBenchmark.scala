@@ -57,8 +57,8 @@ object BankingAkkaManualStashActorBenchmark {
 
   protected class Teller(numAccounts: Int, numBankings: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private val accounts = Array.tabulate[ActorRef](numAccounts)((i) => {
-      context.system.actorOf(Props(new Account(i, BankingConfig.INITIAL_BALANCE)))
+    private val accounts = Array.tabulate[ActorRef[Msg]](numAccounts)((i) => {
+      ctx.spawnAnonymous(Behaviors.setup { ctx => new Account(i, BankingConfig.INITIAL_BALANCE, ctx) })
     })
     private var numCompletedBankings = 0
 
@@ -117,7 +117,7 @@ object BankingAkkaManualStashActorBenchmark {
   protected class Account(id: Int, var balance: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var inReplyMode = false
-    private var replyTeller: ActorRef = null
+    private var replyTeller: ActorRef[Ms0Cg] = null
     private val stashedMessages = new ListBuffer[Msg]()
 
     override def process(theMsg: Msg) {
