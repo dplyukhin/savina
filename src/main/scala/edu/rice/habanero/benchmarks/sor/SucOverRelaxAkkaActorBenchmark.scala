@@ -29,11 +29,13 @@ object SucOverRelaxAkkaActorBenchmark {
     }
     private var system: ActorSystem[Msg] = _
     def runIteration() {
-      system = AkkaActorState.newActorSystem("SucOverRelax")
-
       val dataLevel = SucOverRelaxConfig.N
-      val sorRunner = system.actorOf(Props(new SorRunner(dataLevel)))
-      sorRunner ! SorBootMessage
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new SorRunner(dataLevel, ctx)
+        ),
+        "SucOverRelax")
+      system ! SorBootMessage
 
       println("pre-AkkaActorState.awaitTermination")
       AkkaActorState.awaitTermination(system)

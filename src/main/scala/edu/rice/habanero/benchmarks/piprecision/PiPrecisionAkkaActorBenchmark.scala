@@ -32,11 +32,12 @@ object PiPrecisionAkkaActorBenchmark {
       val numWorkers: Int = PiPrecisionConfig.NUM_WORKERS
       val precision: Int = PiPrecisionConfig.PRECISION
 
-      system = AkkaActorState.newActorSystem("PiPrecision")
-
-      val master = system.actorOf(Props(new Master(numWorkers, precision)))
-
-      master ! StartMessage
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new Master(numWorkers, precision, ctx)
+        ),
+        "PiPrecision")
+      system ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }

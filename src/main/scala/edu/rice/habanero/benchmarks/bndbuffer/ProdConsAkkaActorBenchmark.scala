@@ -28,15 +28,16 @@ object ProdConsAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("ProdCons")
-
-      val manager = system.actorOf(Props(
-        new ManagerActor(
-          ProdConsBoundedBufferConfig.bufferSize,
-          ProdConsBoundedBufferConfig.numProducers,
-          ProdConsBoundedBufferConfig.numConsumers,
-          ProdConsBoundedBufferConfig.numItemsPerProducer)),
-        name = "manager")
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new ManagerActor(
+            ProdConsBoundedBufferConfig.bufferSize,
+            ProdConsBoundedBufferConfig.numProducers,
+            ProdConsBoundedBufferConfig.numConsumers,
+            ProdConsBoundedBufferConfig.numItemsPerProducer,
+            ctx)
+        ),
+        "ProdCons")
 
       AkkaActorState.awaitTermination(system)
     }

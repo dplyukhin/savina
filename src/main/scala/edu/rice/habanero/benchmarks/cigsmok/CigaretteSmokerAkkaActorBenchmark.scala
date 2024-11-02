@@ -28,11 +28,12 @@ object CigaretteSmokerAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("CigaretteSmoker")
-
-      val arbiterActor = system.actorOf(Props(new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S)))
-
-      arbiterActor ! StartMessage
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S, ctx)
+        ),
+        "CigaretteSmoker")
+      system ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }

@@ -29,10 +29,12 @@ object UctAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("UCT")
-
-      val rootActor = system.actorOf(Props(new RootActor()))
-0      rootActor ! GenerateTreeMessage
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new RootActor(ctx)
+        ),
+        "UCT")
+      system ! GenerateTreeMessage
 
       AkkaActorState.awaitTermination(system)
     }

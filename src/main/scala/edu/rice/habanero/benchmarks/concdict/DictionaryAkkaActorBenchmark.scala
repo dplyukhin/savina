@@ -31,9 +31,12 @@ object DictionaryAkkaActorBenchmark {
     def runIteration() {
       val numWorkers: Int = DictionaryConfig.NUM_ENTITIES
       val numMessagesPerWorker: Int = DictionaryConfig.NUM_MSGS_PER_WORKER
-      system = AkkaActorState.newActorSystem("Dictionary")
 
-      val master = system.actorOf(Props(new Master(numWorkers, numMessagesPerWorker)))
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new Master(numWorkers, numMessagesPerWorker, ctx)
+        ),
+        "Dictionary")
 
       AkkaActorState.awaitTermination(system)
     }

@@ -27,13 +27,15 @@ object TrapezoidalAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("Trapezoidal")
-
       val numWorkers: Int = TrapezoidalConfig.W
       val precision: Double = (TrapezoidalConfig.R - TrapezoidalConfig.L) / TrapezoidalConfig.N
 
-      val master = system.actorOf(Props(new Master(numWorkers)))
-      master ! new WorkMessage(TrapezoidalConfig.L, TrapezoidalConfig.R, precision)
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new Master(numWorkers, ctx)
+        ),
+        "Trapezoidal")
+      system ! new WorkMessage(TrapezoidalConfig.L, TrapezoidalConfig.R, precision)
 
       AkkaActorState.awaitTermination(system)
     }

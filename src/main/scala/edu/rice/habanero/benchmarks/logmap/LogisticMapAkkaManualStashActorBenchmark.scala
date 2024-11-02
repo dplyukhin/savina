@@ -30,10 +30,12 @@ object LogisticMapAkkaManualStashActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("LogisticMap")
-
-      val master = system.actorOf(Props(new Master()))
-      master ! StartMessage
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx =>
+          new Master(ctx)
+        ),
+        "LogisticMap")
+      system ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }

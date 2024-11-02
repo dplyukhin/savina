@@ -30,10 +30,11 @@ object BankingAkkaManualStashActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newActorSystem("Banking")
+      system = AkkaActorState.newTypedActorSystem(
+        Behaviors.setupRoot(ctx => new Teller(BankingConfig.A, BankingConfig.N, ctx)),
+        "Banking")
 
-      val master = system.actorOf(Props(new Teller(BankingConfig.A, BankingConfig.N)))
-      master ! StartMessage
+      system ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }
