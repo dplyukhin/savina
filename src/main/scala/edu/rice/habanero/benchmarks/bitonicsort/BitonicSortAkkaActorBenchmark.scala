@@ -59,10 +59,13 @@ object BitonicSortAkkaActorBenchmark {
   private case class ValueMessage(value: Long) extends Msg with NoRefs
   private case class DataMessage(orderId: Int, value: Long) extends Msg with NoRefs
   private case class StartMessage() extends Msg with NoRefs
+  private case class ExitMessage() extends Msg with NoRefs
 
 
-  private class ValueDataAdapterActor(orderId: Int, nextActor: ActorRef) extends AkkaActor[AnyRef] {
-    override def process(msg: AnyRef) {
+  private class ValueDataAdapterActor(orderId: Int, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
+
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -80,8 +83,8 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class DataValueAdapterActor(nextActor: ActorRef) extends AkkaActor[AnyRef] {
-    override def process(msg: AnyRef) {
+  private class DataValueAdapterActor(nextActor: ActorRef, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -99,12 +102,14 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class RoundRobinSplitterActor(name: String, length: Int, receivers: Array[ActorRef]) extends AkkaActor[AnyRef] {
+  private class RoundRobinSplitterActor(name: String, length: Int, receivers: Array[ActorRef[Msg]],
+                                        ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
 
     private var receiverIndex = 0
     private var currentRun = 0
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -123,7 +128,8 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class RoundRobinJoinerActor(name: String, length: Int, numJoiners: Int, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class RoundRobinJoinerActor(name: String, length: Int, numJoiners: Int, nextActor: ActorRef[Msg],
+                                      ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val receivedData = Array.tabulate[ListBuffer[DataMessage]](numJoiners)(i => new ListBuffer[DataMessage]())
 
@@ -132,7 +138,7 @@ object BitonicSortAkkaActorBenchmark {
 
     private var exitsReceived = 0
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case dm: DataMessage =>
 
@@ -168,12 +174,13 @@ object BitonicSortAkkaActorBenchmark {
    *
    * sortDirection determines if the sort is nondecreasing (UP) [true] or nonincreasing (DOWN) [false].
    */
-  private class CompareExchangeActor(orderId: Int, sortDirection: Boolean, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class CompareExchangeActor(orderId: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
 
     private var k1: Long = 0
     private var valueAvailable = false
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -213,7 +220,8 @@ object BitonicSortAkkaActorBenchmark {
    *
    * Graphically, it is a bunch of CompareExchanges with same sortdir, clustered together in the sort network at a particular step (of some merge stage).
    */
-  private class PartitionBitonicSequenceActor(orderId: Int, length: Int, sortDir: Boolean, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class PartitionBitonicSequenceActor(orderId: Int, length: Int, sortDir: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
 
     val halfLength = length / 2
     val forwardActor = {
@@ -238,7 +246,7 @@ object BitonicSortAkkaActorBenchmark {
     }
 
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -257,7 +265,8 @@ object BitonicSortAkkaActorBenchmark {
    *
    * directionCounter determines which step we are in the current merge stage (which in turn is determined by <L, numSeqPartitions>)
    */
-  private class StepOfMergeActor(orderId: Int, length: Int, numSeqPartitions: Int, directionCounter: Int, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class StepOfMergeActor(orderId: Int, length: Int, numSeqPartitions: Int, directionCounter: Int,
+                                 nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     val forwardActor = {
       val actor = context.system.actorOf(Props(new DataValueAdapterActor(nextActor)))
@@ -296,7 +305,7 @@ object BitonicSortAkkaActorBenchmark {
     }
 
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -316,7 +325,8 @@ object BitonicSortAkkaActorBenchmark {
    * Main difference form StepOfMerge is the direction of sort.
    * It is always in the same direction - sortdir.
    */
-  private class StepOfLastMergeActor(length: Int, numSeqPartitions: Int, sortDirection: Boolean, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class StepOfLastMergeActor(length: Int, numSeqPartitions: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
 
     val joinerActor = {
       val actor = context.system.actorOf(Props(new RoundRobinJoinerActor("StepOfLastMerge-" + length, length, numSeqPartitions, nextActor)))
@@ -343,7 +353,7 @@ object BitonicSortAkkaActorBenchmark {
     }
 
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -364,7 +374,7 @@ object BitonicSortAkkaActorBenchmark {
    * In short, a MergeStage is N/P Bitonic Sorters of order P each.
    * But, this MergeStage is implemented *iteratively* as logP STEPS.
    */
-  private class MergeStageActor(P: Int, N: Int, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class MergeStageActor(P: Int, N: Int, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     val forwardActor = {
       var loopActor: ActorRef = nextActor
@@ -390,7 +400,7 @@ object BitonicSortAkkaActorBenchmark {
       loopActor
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -411,7 +421,7 @@ object BitonicSortAkkaActorBenchmark {
    *
    * This is implemented iteratively as logN steps.
    */
-  private class LastMergeStageActor(N: Int, sortDirection: Boolean, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class LastMergeStageActor(N: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     val forwardActor = {
       var loopActor: ActorRef = nextActor
@@ -436,7 +446,7 @@ object BitonicSortAkkaActorBenchmark {
       loopActor
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -455,7 +465,7 @@ object BitonicSortAkkaActorBenchmark {
    * It has logN merge stages and all merge stages except the last progressively builds a bitonic sequence out of the input sequence.
    * The last merge stage acts on the resultant bitonic sequence to produce the final sorted sequence (sortdir determines if it is UP or DOWN).
    */
-  private class BitonicSortKernelActor(N: Int, sortDirection: Boolean, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class BitonicSortKernelActor(N: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     val forwardActor = {
       var loopActor: ActorRef = nextActor
@@ -481,7 +491,7 @@ object BitonicSortAkkaActorBenchmark {
       loopActor
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case vm: ValueMessage =>
 
@@ -495,12 +505,13 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class IntSourceActor(numValues: Int, maxValue: Long, seed: Long, nextActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class IntSourceActor(numValues: Int, maxValue: Long, seed: Long, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+    extends GCActor[Msg](ctx) {
 
     private val random = new PseudoRandom(seed)
     private val sb = new StringBuilder()
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
 
       msg match {
         case nm: StartMessage =>
@@ -527,7 +538,7 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class ValidationActor(numValues: Int) extends AkkaActor[AnyRef] {
+  private class ValidationActor(numValues: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var sumSoFar = 0.0
     private var valuesSoFar = 0
@@ -535,7 +546,7 @@ object BitonicSortAkkaActorBenchmark {
     private var errorValue = (-1L, -1)
     private val sb = new StringBuilder()
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
 
       msg match {
         case vm: ValueMessage =>

@@ -33,7 +33,7 @@ object BankingAkkaManualStashActorBenchmark {
 
       val master = system.actorOf(Props(new Teller(BankingConfig.A, BankingConfig.N)))
       AkkaActorState.startActor(master)
-      master ! StartMessage.ONLY
+      master ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -55,7 +55,7 @@ object BankingAkkaManualStashActorBenchmark {
     override def refs: Iterable[ActorRef[_]] = List(sender, recipient)
   }
 
-  protected class Teller(numAccounts: Int, numBankings: Int) extends AkkaActor[AnyRef] {
+  protected class Teller(numAccounts: Int, numBankings: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val accounts = Array.tabulate[ActorRef](numAccounts)((i) => {
       context.system.actorOf(Props(new Account(i, BankingConfig.INITIAL_BALANCE)))
@@ -69,10 +69,10 @@ object BankingAkkaManualStashActorBenchmark {
       accounts.foreach(loopAccount => AkkaActorState.startActor(loopAccount))
     }
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
       theMsg match {
 
-        case sm: BankingConfig.StartMessage =>
+        case StartMessage =>
 
           var m = 0
           while (m < numBankings) {
@@ -80,11 +80,11 @@ object BankingAkkaManualStashActorBenchmark {
             m += 1
           }
 
-        case sm: BankingConfig.ReplyMessage =>
+        case ReplyMessage =>
 
           numCompletedBankings += 1
           if (numCompletedBankings == numBankings) {
-            accounts.foreach(loopAccount => loopAccount ! StopMessage.ONLY)
+            accounts.foreach(loopAccount => loopAccount ! StopMessage)
             exit()
           }
 
@@ -114,23 +114,23 @@ object BankingAkkaManualStashActorBenchmark {
     }
   }
 
-  protected class Account(id: Int, var balance: Double) extends AkkaActor[AnyRef] {
+  protected class Account(id: Int, var balance: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var inReplyMode = false
     private var replyTeller: ActorRef = null
-    private val stashedMessages = new ListBuffer[AnyRef]()
+    private val stashedMessages = new ListBuffer[Msg]()
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
 
       if (inReplyMode) {
 
         theMsg match {
 
-          case _: ReplyMessage =>
+          case ReplyMessage =>
 
             inReplyMode = false
 
-            replyTeller ! ReplyMessage.ONLY
+            replyTeller ! ReplyMessage
             if (!stashedMessages.isEmpty) {
               val newMsg = stashedMessages.remove(0)
               self ! newMsg
@@ -149,7 +149,7 @@ object BankingAkkaManualStashActorBenchmark {
 
             balance += dm.amount
             val creditor = dm.sender.asInstanceOf[ActorRef]
-            creditor ! ReplyMessage.ONLY
+            creditor ! ReplyMessage
 
           case cm: CreditMessage =>
 
@@ -161,7 +161,7 @@ object BankingAkkaManualStashActorBenchmark {
             destAccount ! new DebitMessage(sender, cm.amount)
             inReplyMode = true
 
-          case _: StopMessage =>
+          case StopMessage =>
             exit()
 
           case message =>

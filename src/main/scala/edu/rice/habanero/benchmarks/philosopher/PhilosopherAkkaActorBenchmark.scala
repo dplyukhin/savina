@@ -74,7 +74,7 @@ object PhilosopherAkkaActorBenchmark {
   case class DeniedMessage() extends Msg with NoRefs
 
 
-  private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, arbitrator: ActorRef) extends AkkaActor[AnyRef] {
+  private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, arbitrator: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var localCounter = 0L
     private var roundsSoFar = 0
@@ -82,7 +82,7 @@ object PhilosopherAkkaActorBenchmark {
     private val myHungryMessage = HungryMessage(self, id)
     private val myDoneMessage = DoneMessage(id)
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
 
         case dm: DeniedMessage =>
@@ -111,12 +111,12 @@ object PhilosopherAkkaActorBenchmark {
     }
   }
 
-  private class ArbitratorActor(numForks: Int) extends AkkaActor[AnyRef] {
+  private class ArbitratorActor(numForks: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val forks = Array.tabulate(numForks)(i => new AtomicBoolean(false))
     private var numExitedPhilosophers = 0
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case hm: HungryMessage =>
 

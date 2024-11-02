@@ -60,9 +60,9 @@ object DictionaryAkkaActorBenchmark {
   private case object EndWorkMessage extends Msg with NoRefs
 
 
-  private class Master(numWorkers: Int, numMessagesPerWorker: Int) extends AkkaActor[AnyRef] {
+  private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val workers = new Array[ActorRef](numWorkers)
+    private final val workers = new Array[ActorRef[Msg]](numWorkers)
     private final val dictionary = context.system.actorOf(Props(new Dictionary(DictionaryConfig.DATA_MAP)))
     private var numWorkersTerminated: Int = 0
 
@@ -73,29 +73,29 @@ object DictionaryAkkaActorBenchmark {
       while (i < numWorkers) {
         workers(i) = context.system.actorOf(Props(new Worker(self, dictionary, i, numMessagesPerWorker)))
         AkkaActorState.startActor(workers(i))
-        workers(i) ! DoWorkMessage.ONLY
+        workers(i) ! DoWorkMessage
         i += 1
       }
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       if (msg.isInstanceOf[DictionaryConfig.EndWorkMessage]) {
         numWorkersTerminated += 1
         if (numWorkersTerminated == numWorkers) {
-          dictionary ! EndWorkMessage.ONLY
+          dictionary ! EndWorkMessage
           exit()
         }
       }
     }
   }
 
-  private class Worker(master: ActorRef, dictionary: ActorRef, id: Int, numMessagesPerWorker: Int) extends AkkaActor[AnyRef] {
+  private class Worker(master: ActorRef[Msg], dictionary: ActorRef[Msg], id: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val writePercent = DictionaryConfig.WRITE_PERCENTAGE
     private var messageCount: Int = 0
     private final val random = new util.Random(id + numMessagesPerWorker + writePercent)
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       messageCount += 1
       if (messageCount <= numMessagesPerWorker) {
         val anInt: Int = random.nextInt(100)
@@ -105,27 +105,27 @@ object DictionaryAkkaActorBenchmark {
           dictionary ! new ReadMessage(self, random.nextInt)
         }
       } else {
-        master ! EndWorkMessage.ONLY
+        master ! EndWorkMessage
         exit()
       }
     }
   }
 
-  private class Dictionary(initialState: util.Map[Integer, Integer]) extends AkkaActor[AnyRef] {
+  private class Dictionary(initialState: util.Map[Integer, Integer], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private[concdict] final val dataMap = new util.HashMap[Integer, Integer](initialState)
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case writeMessage: DictionaryConfig.WriteMessage =>
           val key = writeMessage.key
           val value = writeMessage.value
           dataMap.put(key, value)
-          val sender = writeMessage.sender.asInstanceOf[ActorRef]
+          val sender = writeMessage.sender.asInstanceOf[ActorRef[Msg]]
           sender ! new DictionaryConfig.ResultMessage(self, value)
         case readMessage: DictionaryConfig.ReadMessage =>
           val value = dataMap.get(readMessage.key)
-          val sender = readMessage.sender.asInstanceOf[ActorRef]
+          val sender = readMessage.sender.asInstanceOf[ActorRef[Msg]]
           sender ! new DictionaryConfig.ResultMessage(self, value)
         case _: DictionaryConfig.EndWorkMessage =>
           printf(BenchmarkRunner.argOutputFormat, "Dictionary Size", dataMap.size)

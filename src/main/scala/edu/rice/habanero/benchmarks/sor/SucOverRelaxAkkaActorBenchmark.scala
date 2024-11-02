@@ -65,15 +65,15 @@ object SucOverRelaxAkkaActorBenchmark {
 
   case class SorResultMessage(mx: Int, my: Int, mv: Double, msgRcv: Int) extends Msg with NoRefs
 
-  private class SorRunner(n: Int) extends AkkaActor[AnyRef] {
+  private class SorRunner(n: Int) extends GCActor[Msg](ctx) {
 
     private val s = SucOverRelaxConfig.DATA_SIZES(n)
     private val part = s / 2
-    private val sorActors = Array.ofDim[ActorRef](s * (part + 1))
+    private val sorActors = Array.ofDim[ActorRef[Msg]](s * (part + 1))
 
     private def boot(): Unit = {
 
-      val myBorder = Array.ofDim[ActorRef](s)
+      val myBorder = Array.ofDim[ActorRef[Msg]](s)
       val randoms = SucOverRelaxConfig.A
 
       for (i <- 0 until s) {
@@ -106,7 +106,7 @@ object SucOverRelaxAkkaActorBenchmark {
     private var totalMsgRcv = 0
     private var expectingBoot = true
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case SorBootMessage =>
           expectingBoot = false
@@ -146,9 +146,9 @@ object SucOverRelaxAkkaActorBenchmark {
                   nx: Int,
                   ny: Int,
                   omega: Double,
-                  sorSource: ActorRef,
+                  sorSource: ActorRef[Msg],
                   peer: Boolean
-                  ) extends AkkaActor[AnyRef] {
+                  ) extends GCActor[Msg](ctx) {
 
     private val selfActor = self
     private final val x = pos / ny
@@ -193,14 +193,14 @@ object SucOverRelaxAkkaActorBenchmark {
     private var iter = 0
     private var maxIter = 0
     private var msgRcv = 0
-    private var sorActors: Array[ActorRef] = null
+    private var sorActors: Array[ActorRef[Msg]] = null
 
     private var receivedVals = 0
     private var sum = 0.0
     private var expectingStart = true
-    private val pendingMessages = new ListBuffer[AnyRef]()
+    private val pendingMessages = new ListBuffer[Msg]()
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case SorStartMessage(mi, mActors) =>
           expectingStart = false
@@ -253,13 +253,13 @@ object SucOverRelaxAkkaActorBenchmark {
                  partStart: Int,
                  matrixPart: Array[Array[Double]],
                  border: SorBorder,
-                 sorSource: ActorRef
-                 ) extends AkkaActor[AnyRef] {
+                 sorSource: ActorRef[Msg]
+                 ) extends GCActor[Msg](ctx) {
 
-    private val sorActors = Array.ofDim[ActorRef](s * (s - partStart + 1))
+    private val sorActors = Array.ofDim[ActorRef[Msg]](s * (s - partStart + 1))
 
     private def boot(): Unit = {
-      val myBorder = Array.ofDim[ActorRef](s)
+      val myBorder = Array.ofDim[ActorRef[Msg]](s)
       for (i <- 0 until s) {
         sorActors(i * (s - partStart + 1)) = border.borderActors(i)
       }
@@ -292,7 +292,7 @@ object SucOverRelaxAkkaActorBenchmark {
     private var totalMsgRcv = 0
     private var expectingBoot = true
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case SorBootMessage =>
           expectingBoot = false

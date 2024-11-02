@@ -37,7 +37,7 @@ object PiPrecisionAkkaActorBenchmark {
       val master = system.actorOf(Props(new Master(numWorkers, precision)))
       AkkaActorState.startActor(master)
 
-      master ! StartMessage.ONLY
+      master ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -54,9 +54,9 @@ object PiPrecisionAkkaActorBenchmark {
   private case class WorkMessage(scale: Int, term: Int) extends Msg with NoRefs
   private case class ResultMessage(result: BigDecimal, workerId: Int) extends Msg with NoRefs
 
-  private class Master(numWorkers: Int, scale: Int) extends AkkaActor[AnyRef] {
+  private class Master(numWorkers: Int, scale: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val workers = Array.tabulate[ActorRef](numWorkers)(i => context.system.actorOf(Props(new Worker(self, i))))
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => context.system.actorOf(Props(new Worker(self, i))))
     private var result: BigDecimal = BigDecimal.ZERO
     private final val tolerance = BigDecimal.ONE.movePointLeft(scale)
     private final val numWorkersTerminated: AtomicInteger = new AtomicInteger(0)
@@ -83,11 +83,11 @@ object PiPrecisionAkkaActorBenchmark {
 
     def requestWorkersToExit() {
       workers.foreach(loopWorker => {
-        loopWorker ! StopMessage.ONLY
+        loopWorker ! StopMessage
       })
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case rm: PiPrecisionConfig.ResultMessage =>
           numTermsReceived += 1
@@ -123,9 +123,9 @@ object PiPrecisionAkkaActorBenchmark {
     }
   }
 
-  private class Worker(master: ActorRef, id: Int) extends AkkaActor[AnyRef] {
+  private class Worker(master: ActorRef[Msg], id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case _: PiPrecisionConfig.StopMessage =>
           master ! new PiPrecisionConfig.StopMessage

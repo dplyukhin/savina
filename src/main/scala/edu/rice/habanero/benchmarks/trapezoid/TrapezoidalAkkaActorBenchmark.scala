@@ -48,9 +48,9 @@ object TrapezoidalAkkaActorBenchmark {
   private case class WorkMessage(l: Double, r: Double, h: Double) extends Msg with NoRefs
   private case class ResultMessage(result: Double, workerId: Int) extends Msg with NoRefs
 
-  private class Master(numWorkers: Int) extends AkkaActor[AnyRef] {
+  private class Master(numWorkers: Int) extends GCActor[Msg](ctx) {
 
-    private final val workers = Array.tabulate[ActorRef](numWorkers)(i =>
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i =>
       context.system.actorOf(Props(new Worker(self, i))))
     private var numTermsReceived: Int = 0
     private var resultArea: Double = 0.0
@@ -61,7 +61,7 @@ object TrapezoidalAkkaActorBenchmark {
       })
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case rm: ResultMessage =>
 
@@ -92,9 +92,9 @@ object TrapezoidalAkkaActorBenchmark {
     }
   }
 
-  private class Worker(master: ActorRef, val id: Int) extends AkkaActor[AnyRef] {
+  private class Worker(master: ActorRef[Msg], val id: Int) extends GCActor[Msg](ctx) {
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case wm: WorkMessage =>
 

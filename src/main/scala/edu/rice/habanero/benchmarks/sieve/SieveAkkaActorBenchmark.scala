@@ -52,8 +52,8 @@ object SieveAkkaActorBenchmark {
   }
   case class StringMsg(value: String) extends Msg with NoRefs
 
-  private class NumberProducerActor(limit: Long) extends AkkaActor[AnyRef] {
-    override def process(msg: AnyRef) {
+  private class NumberProducerActor(limit: Long) extends GCActor[Msg](ctx) {
+    override def process(msg: Msg) {
       msg match {
         case RefMsg(filterActor) =>
           var candidate: Long = 3
@@ -67,9 +67,9 @@ object SieveAkkaActorBenchmark {
     }
   }
 
-  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int) extends AkkaActor[AnyRef] {
+  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int) extends GCActor[Msg](ctx) {
 
-    var nextFilterActor: ActorRef = null
+    var nextFilterActor: ActorRef[Msg] = null
     val localPrimes = new Array[Long](numMaxLocalPrimes)
 
     var availableLocalPrimes = 1
@@ -89,7 +89,7 @@ object SieveAkkaActorBenchmark {
       }
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       try {
         msg match {
           case candidate: LongBox =>

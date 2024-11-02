@@ -33,7 +33,7 @@ object UctAkkaActorBenchmark {
 
       val rootActor = system.actorOf(Props(new RootActor()))
       AkkaActorState.startActor(rootActor)
-      rootActor ! GenerateTreeMessage.ONLY
+      rootActor ! GenerateTreeMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -62,24 +62,24 @@ object UctAkkaActorBenchmark {
    * @author xinghuizhao
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
-  protected class RootActor extends AkkaActor[AnyRef] {
+  protected class RootActor extends GCActor[Msg](ctx) {
 
     private final val ran: Random = new Random(2)
     private var height: Int = 1
     private var size: Int = 1
-    private final val children = new Array[ActorRef](UctConfig.BINOMIAL_PARAM)
+    private final val children = new Array[ActorRef[Msg]](UctConfig.BINOMIAL_PARAM)
     private final val hasGrantChildren = new Array[Boolean](UctConfig.BINOMIAL_PARAM)
     private var traversed: Boolean = false
     private var finalSizePrinted: Boolean = false
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: UctConfig.GenerateTreeMessage =>
           generateTree()
         case grantMessage: UctConfig.UpdateGrantMessage =>
           updateGrant(grantMessage.childId)
         case booleanMessage: UctConfig.ShouldGenerateChildrenMessage =>
-          val sender: ActorRef = booleanMessage.sender.asInstanceOf[ActorRef]
+          val sender: ActorRef[Msg] = booleanMessage.sender.asInstanceOf[ActorRef[Msg]]
           checkGenerateChildrenRequest(sender, booleanMessage.childHeight)
         case _: UctConfig.PrintInfoMessage =>
           printInfo()
@@ -109,7 +109,7 @@ object UctAkkaActorBenchmark {
       var j: Int = 0
       while (j < UctConfig.BINOMIAL_PARAM) {
 
-        children(j) ! TryGenerateChildrenMessage.ONLY
+        children(j) ! TryGenerateChildrenMessage
 
         j += 1
       }
@@ -122,7 +122,7 @@ object UctAkkaActorBenchmark {
      * @param childName The child name
      * @param childHeight The height of the child in the tree
      */
-    def checkGenerateChildrenRequest(childName: ActorRef, childHeight: Int) {
+    def checkGenerateChildrenRequest(childName: ActorRef[Msg], childHeight: Int) {
       if (size + UctConfig.BINOMIAL_PARAM <= UctConfig.MAX_NODES) {
         val moreChildren: Boolean = ran.nextBoolean
         if (moreChildren) {
@@ -184,7 +184,7 @@ object UctAkkaActorBenchmark {
     def traverse() {
       var i: Int = 0
       while (i < UctConfig.BINOMIAL_PARAM) {
-        children(i) ! TraverseMessage.ONLY
+        children(i) ! TraverseMessage
         i += 1
       }
     }
@@ -194,7 +194,7 @@ object UctAkkaActorBenchmark {
       var i: Int = 0
       while (i < UctConfig.BINOMIAL_PARAM) {
 
-        children(i) ! PrintInfoMessage.ONLY
+        children(i) ! PrintInfoMessage
         i += 1
       }
 
@@ -203,7 +203,7 @@ object UctAkkaActorBenchmark {
     def terminateMe() {
       var i: Int = 0
       while (i < UctConfig.BINOMIAL_PARAM) {
-        children(i) ! TerminateMessage.ONLY
+        children(i) ! TerminateMessage
         i += 1
       }
 
@@ -216,7 +216,7 @@ object UctAkkaActorBenchmark {
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
   protected object NodeActor {
-    def createNodeActor(system: ActorSystem, parent: ActorRef, root: ActorRef, height: Int, id: Int, comp: Int, urgent: Boolean): ActorRef = {
+    def createNodeActor(system: ActorSystem, parent: ActorRef[Msg], root: ActorRef[Msg], height: Int, id: Int, comp: Int, urgent: Boolean): ActorRef[Msg] = {
       val nodeActor = system.actorOf(Props(new NodeActor(parent, root, height, id, comp, urgent)))
       AkkaActorState.startActor(nodeActor)
       nodeActor
@@ -225,14 +225,14 @@ object UctAkkaActorBenchmark {
     private final val dummy: Int = 40000
   }
 
-  protected class NodeActor(myParent: ActorRef, myRoot: ActorRef, myHeight: Int, myId: Int, myCompSize: Int, isUrgent: Boolean) extends AkkaActor[AnyRef] {
+  protected class NodeActor(myParent: ActorRef[Msg], myRoot: ActorRef[Msg], myHeight: Int, myId: Int, myCompSize: Int, isUrgent: Boolean) extends GCActor[Msg](ctx) {
 
     private var urgentChild: Int = 0
     private var hasChildren: Boolean = false
-    private final val children = new Array[ActorRef](UctConfig.BINOMIAL_PARAM)
+    private final val children = new Array[ActorRef[Msg]](UctConfig.BINOMIAL_PARAM)
     private final val hasGrantChildren = new Array[Boolean](UctConfig.BINOMIAL_PARAM)
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: UctConfig.TryGenerateChildrenMessage =>
           tryGenerateChildren()
@@ -283,7 +283,7 @@ object UctAkkaActorBenchmark {
       var j: Int = 0
       while (j < UctConfig.BINOMIAL_PARAM) {
 
-        children(j) ! TryGenerateChildrenMessage.ONLY
+        children(j) ! TryGenerateChildrenMessage
         j += 1
       }
     }
@@ -307,7 +307,7 @@ object UctAkkaActorBenchmark {
       var j: Int = 0
       while (j < UctConfig.BINOMIAL_PARAM) {
 
-        children(j) ! TryGenerateChildrenMessage.ONLY
+        children(j) ! TryGenerateChildrenMessage
         j += 1
       }
     }
@@ -329,7 +329,7 @@ object UctAkkaActorBenchmark {
         var i: Int = 0
         while (i < UctConfig.BINOMIAL_PARAM) {
 
-          children(i) ! TraverseMessage.ONLY
+          children(i) ! TraverseMessage
           i += 1
         }
       }
@@ -346,9 +346,9 @@ object UctAkkaActorBenchmark {
           var i: Int = 0
           while (i < UctConfig.BINOMIAL_PARAM) {
             if (i != urgentChild) {
-              children(i) ! TraverseMessage.ONLY
+              children(i) ! TraverseMessage
             } else {
-              children(urgentChild) ! UrgentTraverseMessage.ONLY
+              children(urgentChild) ! UrgentTraverseMessage
             }
             i += 1
           }
@@ -356,7 +356,7 @@ object UctAkkaActorBenchmark {
 
           var i: Int = 0
           while (i < UctConfig.BINOMIAL_PARAM) {
-            children(i) ! TraverseMessage.ONLY
+            children(i) ! TraverseMessage
             i += 1
           }
         }
@@ -377,7 +377,7 @@ object UctAkkaActorBenchmark {
 
         var i: Int = 0
         while (i < UctConfig.BINOMIAL_PARAM) {
-          children(i) ! PrintInfoMessage.ONLY
+          children(i) ! PrintInfoMessage
           i += 1
         }
       } else {
@@ -394,7 +394,7 @@ object UctAkkaActorBenchmark {
 
         var i: Int = 0
         while (i < UctConfig.BINOMIAL_PARAM) {
-          children(i) ! TerminateMessage.ONLY
+          children(i) ! TerminateMessage
           i += 1
         }
       }

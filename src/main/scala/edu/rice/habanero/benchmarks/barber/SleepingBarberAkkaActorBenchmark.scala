@@ -44,7 +44,7 @@ object SleepingBarberAkkaActorBenchmark {
       AkkaActorState.startActor(room)
       AkkaActorState.startActor(factoryActor)
 
-      factoryActor ! Start.ONLY
+      factoryActor ! Start
 
       AkkaActorState.awaitTermination(system)
 
@@ -72,19 +72,19 @@ object SleepingBarberAkkaActorBenchmark {
   }
 
 
-  private class WaitingRoomActor(capacity: Int, barber: ActorRef) extends AkkaActor[AnyRef] {
+  private class WaitingRoomActor(capacity: Int, barber: ActorRef, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val waitingCustomers = new ListBuffer[ActorRef]()
     private var barberAsleep = true
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case message: Enter =>
 
           val customer = message.customer
           if (waitingCustomers.size == capacity) {
 
-            customer ! Full.ONLY
+            customer ! Full
 
           } else {
 
@@ -92,15 +92,15 @@ object SleepingBarberAkkaActorBenchmark {
             if (barberAsleep) {
 
               barberAsleep = false
-              self ! Next.ONLY
+              self ! Next
 
             } else {
 
-              customer ! Wait.ONLY
+              customer ! Wait
             }
           }
 
-        case message: Next =>
+        case Next =>
 
           if (waitingCustomers.size > 0) {
 
@@ -109,42 +109,42 @@ object SleepingBarberAkkaActorBenchmark {
 
           } else {
 
-            barber ! Wait.ONLY
+            barber ! Wait
             barberAsleep = true
 
           }
 
         case message: Exit =>
 
-          barber ! Exit.ONLY
+          barber ! Exit
           exit()
 
       }
     }
   }
 
-  private class BarberActor extends AkkaActor[AnyRef] {
+  private class BarberActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val random = new PseudoRandom()
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case message: Enter =>
 
           val customer = message.customer
           val room = message.room
 
-          customer ! Start.ONLY
+          customer ! Start
           // println("Barber: Processing customer " + customer)
           SleepingBarberConfig.busyWait(random.nextInt(SleepingBarberConfig.AHR) + 10)
-          customer ! Done.ONLY
-          room ! Next.ONLY
+          customer ! Done
+          room ! Next
 
-        case message: Wait =>
+        case Wait =>
 
         // println("Barber: No customers. Going to have a sleep")
 
-        case message: Exit =>
+        case Exit =>
 
           exit()
 
@@ -152,14 +152,15 @@ object SleepingBarberAkkaActorBenchmark {
     }
   }
 
-  private class CustomerFactoryActor(idGenerator: AtomicLong, haircuts: Int, room: ActorRef) extends AkkaActor[AnyRef] {
+  private class CustomerFactoryActor(idGenerator: AtomicLong, haircuts: Int, room: ActorRef[Msg],
+                                     ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val random = new PseudoRandom()
     private var numHairCutsSoFar = 0
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
-        case message: Start =>
+        case Start =>
 
           var i = 0
           while (i < haircuts) {
@@ -173,12 +174,12 @@ object SleepingBarberAkkaActorBenchmark {
           idGenerator.incrementAndGet()
           sendCustomerToRoom(message.customer)
 
-        case message: Done =>
+        case Done =>
 
           numHairCutsSoFar += 1
           if (numHairCutsSoFar == haircuts) {
             println("Total attempts: " + idGenerator.get())
-            room ! Exit.ONLY
+            room ! Exit
             exit()
           }
       }
@@ -197,27 +198,27 @@ object SleepingBarberAkkaActorBenchmark {
     }
   }
 
-  private class CustomerActor(val id: Long, factoryActor: ActorRef) extends AkkaActor[AnyRef] {
+  private class CustomerActor(val id: Long, factoryActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
-        case message: Full =>
+        case Full =>
 
           // println("Customer-" + id + " The waiting room is full. I am leaving.")
           factoryActor ! new Returned(self)
 
-        case message: Wait =>
+        case Wait =>
 
         // println("Customer-" + id + " I will wait.")
 
-        case message: Start =>
+        case Start =>
 
         // println("Customer-" + id + " I am now being served.")
 
-        case message: Done =>
+        case Done =>
 
           //  println("Customer-" + id + " I have been served.")
-          factoryActor ! Done.ONLY
+          factoryActor ! Done
           exit()
       }
     }

@@ -34,7 +34,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
 
       val master = system.actorOf(Props(new Master()))
       AkkaActorState.startActor(master)
-      master ! StartMessage.ONLY
+      master ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -54,16 +54,16 @@ object LogisticMapAkkaManualStashActorBenchmark {
   }
   private case class ResultMsg(term: Double) extends Msg with NoRefs
 
-  private class Master extends AkkaActor[AnyRef] {
+  private class Master extends GCActor[Msg](ctx) {
 
     private final val numComputers: Int = LogisticMapConfig.numSeries
-    private final val computers = Array.tabulate[ActorRef](numComputers)(i => {
+    private final val computers = Array.tabulate[ActorRef[Msg]](numComputers)(i => {
       val rate = LogisticMapConfig.startRate + (i * LogisticMapConfig.increment)
       context.system.actorOf(Props(new RateComputer(rate)))
     })
 
     private final val numWorkers: Int = LogisticMapConfig.numSeries
-    private final val workers = Array.tabulate[ActorRef](numWorkers)(i => {
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val rateComputer = computers(i % numComputers)
       val startTerm = i * LogisticMapConfig.increment
       context.system.actorOf(Props(new SeriesWorker(i, self, rateComputer, startTerm)))
@@ -82,7 +82,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
       })
     }
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: StartMessage =>
 
@@ -90,14 +90,14 @@ object LogisticMapAkkaManualStashActorBenchmark {
           while (i < LogisticMapConfig.numTerms) {
             // request each worker to compute the next term
             workers.foreach(loopWorker => {
-              loopWorker ! NextTermMessage.ONLY
+              loopWorker ! NextTermMessage
             })
             i += 1
           }
 
           // workers should stop after all items have been computed
           workers.foreach(loopWorker => {
-            loopWorker ! GetTermMessage.ONLY
+            loopWorker ! GetTermMessage
             numWorkRequested += 1
           })
 
@@ -111,10 +111,10 @@ object LogisticMapAkkaManualStashActorBenchmark {
             println("Terms sum: " + termsSum)
 
             computers.foreach(loopComputer => {
-              loopComputer ! StopMessage.ONLY
+              loopComputer ! StopMessage
             })
             workers.foreach(loopWorker => {
-              loopWorker ! StopMessage.ONLY
+              loopWorker ! StopMessage
             })
             exit()
           }
@@ -127,14 +127,14 @@ object LogisticMapAkkaManualStashActorBenchmark {
     }
   }
 
-  private class SeriesWorker(id: Int, master: ActorRef, computer: ActorRef, startTerm: Double) extends AkkaActor[AnyRef] {
+  private class SeriesWorker(id: Int, master: ActorRef[Msg], computer: ActorRef[Msg], startTerm: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val curTerm = Array.tabulate[Double](1)(i => startTerm)
 
     private var inReplyMode = false
-    private val stashedMessages = new util.LinkedList[AnyRef]()
+    private val stashedMessages = new util.LinkedList[Msg]()
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
 
       if (inReplyMode) {
 
@@ -189,9 +189,9 @@ object LogisticMapAkkaManualStashActorBenchmark {
     }
   }
 
-  private class RateComputer(rate: Double) extends AkkaActor[AnyRef] {
+  private class RateComputer(rate: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    override def process(theMsg: AnyRef) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case computeMessage: ComputeMessage =>
 

@@ -81,13 +81,13 @@ object FilterBankAkkaActorBenchmark {
     override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.NextMessage =>
-          val source = message.source.asInstanceOf[ActorRef]
+          val source = message.source.asInstanceOf[ActorRef[Msg]]
           if (numMessagesSent == numSimulations) {
-            source ! ExitMessage.ONLY
+            source ! ExitMessage
             exit()
           }
           else {
-            source ! BootMessage.ONLY
+            source ! BootMessage
             numMessagesSent += 1
           }
         case message =>
@@ -97,18 +97,18 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private abstract class FilterBankActor(nextActor: ActorRef) extends AkkaActor[Msg] {
+  private abstract class FilterBankActor(nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
 
     protected override def onPostStart() {
       AkkaActorState.startActor(nextActor)
     }
 
     protected override def onPostExit() {
-      nextActor ! ExitMessage.ONLY
+      nextActor ! ExitMessage
     }
   }
 
-  private class SourceActor(producer: ActorRef, nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class SourceActor(producer: ActorRef[Msg], nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     private final val maxValue: Int = 1000
     private var current: Int = 0
@@ -149,9 +149,9 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef) extends AkkaActor[Msg] {
+  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
 
-    private final val banks = Array.tabulate[ActorRef](numChannels)(i => {
+    private final val banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
       context.system.actorOf(Props(new BankActor(i, numColumns, H(i), F(i), nextActor)))
     })
 
@@ -163,7 +163,7 @@ object FilterBankAkkaActorBenchmark {
 
     protected override def onPostExit() {
       for (loopBank <- banks) {
-        loopBank ! ExitMessage.ONLY
+        loopBank ! ExitMessage
       }
     }
 
@@ -182,7 +182,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef) extends AkkaActor[Msg] {
+  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef[Msg]) extends AkkaActor[Msg] {
 
     private final val firstActor = context.system.actorOf(Props(new DelayActor(sourceId + ".1", numColumns - 1,
       context.system.actorOf(Props(new FirFilterActor(sourceId + ".1", numColumns, H,
@@ -196,7 +196,7 @@ object FilterBankAkkaActorBenchmark {
     }
 
     protected override def onPostExit() {
-      firstActor ! ExitMessage.ONLY
+      firstActor ! ExitMessage
     }
 
     override def process(theMsg: Msg) {
@@ -212,7 +212,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class DelayActor(sourceId: String, delayLength: Int, nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class DelayActor(sourceId: String, delayLength: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     private final val state = Array.tabulate[Double](delayLength)(i => 0)
     private var placeHolder: Int = 0
@@ -233,7 +233,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class FirFilterActor(sourceId: String, peekLength: Int, coefficients: Array[Double], nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class FirFilterActor(sourceId: String, peekLength: Int, coefficients: Array[Double], nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     private var data = Array.tabulate[Double](peekLength)(i => 0)
     private var dataIndex: Int = 0
@@ -269,7 +269,7 @@ object FilterBankAkkaActorBenchmark {
     private final val ZERO_RESULT: FilterBankConfig.ValueMessage = new FilterBankConfig.ValueMessage(0)
   }
 
-  private class SampleFilterActor(sampleRate: Int, nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class SampleFilterActor(sampleRate: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     private var samplesReceived: Int = 0
 
@@ -291,7 +291,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class TaggedForwardActor(sourceId: Int, nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class TaggedForwardActor(sourceId: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     override def process(theMsg: Msg) {
       theMsg match {
@@ -307,7 +307,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class IntegratorActor(numChannels: Int, nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class IntegratorActor(numChannels: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     private final val data = new java.util.ArrayList[util.Map[Integer, Double]]
     private var exitsReceived: Int = 0
@@ -351,7 +351,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class CombineActor(nextActor: ActorRef) extends FilterBankActor(nextActor) {
+  private class CombineActor(nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
 
     override def process(theMsg: Msg) {
       theMsg match {

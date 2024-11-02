@@ -64,7 +64,7 @@ object FacilityLocationAkkaActorBenchmark {
   private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg with NoRefs
 
 
-  private class ProducerActor(consumer: ActorRef) extends AkkaActor[AnyRef] {
+  private class ProducerActor(consumer: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var itemsProduced = 0
 
@@ -77,7 +77,7 @@ object FacilityLocationAkkaActorBenchmark {
       itemsProduced += 1
     }
 
-    override def process(message: AnyRef) {
+    override def process(message: Msg) {
       message match {
         case msg: NextCustomerMsg =>
           if (itemsProduced < FacilityLocationConfig.NUM_POINTS) {
@@ -90,7 +90,7 @@ object FacilityLocationAkkaActorBenchmark {
     }
   }
 
-  private class QuadrantActor(parent: ActorRef,
+  private class QuadrantActor(parent: ActorRef[Msg],
                               positionRelativeToParent: Int,
                               val boundary: Box,
                               threshold: Double,
@@ -98,7 +98,7 @@ object FacilityLocationAkkaActorBenchmark {
                               initLocalFacilities: java.util.List[Point],
                               initKnownFacilities: Int,
                               initMaxDepthOfKnownOpenFacility: Int,
-                              initCustomers: java.util.List[Point]) extends AkkaActor[AnyRef] {
+                              initCustomers: java.util.List[Point], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     // the facility associated with this quadrant if it were to open
     private val facility: Point = boundary.midPoint()
@@ -119,7 +119,7 @@ object FacilityLocationAkkaActorBenchmark {
     private var facilityCustomers = 0
 
     // null when closed, non-null when open
-    private var children: List[ActorRef] = null
+    private var children: List[ActorRef[Msg]] = null
     private var childrenBoundaries: List[Box] = null
 
     // the cost so far
@@ -137,7 +137,7 @@ object FacilityLocationAkkaActorBenchmark {
       }
     })
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case customer: CustomerMsg =>
 
@@ -306,7 +306,7 @@ object FacilityLocationAkkaActorBenchmark {
       AkkaActorState.startActor(fourthChild)
 
 
-      children = List[ActorRef](firstChild, secondChild, thirdChild, fourthChild)
+      children = List[ActorRef[Msg]](firstChild, secondChild, thirdChild, fourthChild)
       childrenBoundaries = List[Box](firstBoundary, secondBoundary, thirdBoundary, fourthBoundary)
 
       // support customers have been distributed to the children

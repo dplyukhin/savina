@@ -33,7 +33,7 @@ object CigaretteSmokerAkkaActorBenchmark {
       val arbiterActor = system.actorOf(Props(new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S)))
       AkkaActorState.startActor(arbiterActor)
 
-      arbiterActor ! StartMessage.ONLY
+      arbiterActor ! StartMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -51,9 +51,9 @@ object CigaretteSmokerAkkaActorBenchmark {
 
   protected class ExitMessage {}
 
-  private class ArbiterActor(numRounds: Int, numSmokers: Int) extends AkkaActor[AnyRef] {
+  private class ArbiterActor(numRounds: Int, numSmokers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private val smokerActors = Array.tabulate[ActorRef](numSmokers)(i =>
+    private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i =>
       context.system.actorOf(Props(new SmokerActor(self))))
     private val random = new PseudoRandom(numRounds * numSmokers)
     private var roundsSoFar = 0
@@ -64,7 +64,7 @@ object CigaretteSmokerAkkaActorBenchmark {
       })
     }
 
-    override def process(msg: AnyRef) {
+    override def process(msg: Msg) {
       msg match {
         case sm: StartMessage =>
 
@@ -95,18 +95,18 @@ object CigaretteSmokerAkkaActorBenchmark {
 
     private def requestSmokersToExit() {
       smokerActors.foreach(loopActor => {
-        loopActor ! ExitMessage.ONLY
+        loopActor ! ExitMessage
       })
     }
   }
 
-  private class SmokerActor(arbiterActor: ActorRef) extends AkkaActor[AnyRef] {
-    override def process(msg: AnyRef) {
+  private class SmokerActor(arbiterActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    override def process(msg: Msg) {
       msg match {
         case sm: StartSmoking =>
 
           // notify arbiter that started smoking
-          arbiterActor ! StartedSmoking.ONLY
+          arbiterActor ! StartedSmoking
           // now smoke cigarette
           CigaretteSmokerConfig.busyWait(sm.busyWaitPeriod)
 
