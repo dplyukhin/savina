@@ -44,18 +44,21 @@ object TrapezoidalAkkaActorBenchmark {
   }
 
   private trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class WorkMessage(l: Double, r: Double, h: Double) extends Msg with NoRefs
   private case class ResultMessage(result: Double, workerId: Int) extends Msg with NoRefs
 
-  private class Master(numWorkers: Int) extends GCActor[Msg](ctx) {
+  private class Master(numWorkers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i =>
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, i, ctx)}))
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
+      val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, ctx)})
+      a ! Rfmsg(ctx.self)
+      a
+    })
     private var numTermsReceived: Int = 0
     private var resultArea: Double = 0.0
-
-    override def onPostStart() {
-    }
 
     override def process(msg: Msg) {
       msg match {
@@ -88,13 +91,15 @@ object TrapezoidalAkkaActorBenchmark {
     }
   }
 
-  private class Worker(master: ActorRef[Msg], val id: Int) extends GCActor[Msg](ctx) {
+  private class Worker(val id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private var master: ActorRef[Msg] = _
 
     override def process(msg: Msg) {
       msg match {
+        case rm: Rfmsg => this.master = rm.actor
         case wm: WorkMessage =>
 
-          val n = ((wm.r - wm.l) / wm.h).asInstanceOf[Int]
+          val n = ((wm.r - wm.l) / wm.h)
           var accumArea = 0.0
 
           var i = 0

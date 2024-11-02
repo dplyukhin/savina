@@ -52,6 +52,9 @@ object FacilityLocationAkkaActorBenchmark {
 
 
   private abstract class Msg() extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class FacilityMsg(positionRelativeToParent: Int, depth: Int, point: Point, fromChild: Boolean) extends
     Msg with NoRefs
   private case class NextCustomerMsg() extends Msg with NoRefs
@@ -62,8 +65,9 @@ object FacilityLocationAkkaActorBenchmark {
   private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg with NoRefs
 
 
-  private class ProducerActor(consumer: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class ProducerActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var consumer: ActorRef[Msg] = _
     private var itemsProduced = 0
 
     override def onPostStart(): Unit = {
@@ -71,12 +75,13 @@ object FacilityLocationAkkaActorBenchmark {
     }
 
     private def produceCustomer(): Unit = {
-      consumer ! (CustomerMsg(self, Point.random(FacilityLocationConfig.GRID_SIZE)))
+      consumer ! (CustomerMsg(ctx.self, Point.random(FacilityLocationConfig.GRID_SIZE)))
       itemsProduced += 1
     }
 
     override def process(message: Msg) {
       message match {
+        case Rfmsg(x) => this.consumer = x
         case msg: NextCustomerMsg =>
           if (itemsProduced < FacilityLocationConfig.NUM_POINTS) {
             produceCustomer()
@@ -88,8 +93,7 @@ object FacilityLocationAkkaActorBenchmark {
     }
   }
 
-  private class QuadrantActor(parent: ActorRef[Msg],
-                              positionRelativeToParent: Int,
+  private class QuadrantActor(positionRelativeToParent: Int,
                               val boundary: Box,
                               threshold: Double,
                               depth: Int,
@@ -98,6 +102,7 @@ object FacilityLocationAkkaActorBenchmark {
                               initMaxDepthOfKnownOpenFacility: Int,
                               initCustomers: java.util.List[Point], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var parent: ActorRef[Msg] = _
     // the facility associated with this quadrant if it were to open
     private val facility: Point = boundary.midPoint()
 
@@ -137,6 +142,9 @@ object FacilityLocationAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.parent = x
+
         case customer: CustomerMsg =>
 
           val point: Point = customer.point
@@ -280,25 +288,28 @@ object FacilityLocationAkkaActorBenchmark {
       val fourthBoundary: Box = new Box(facility.x, boundary.y1, boundary.x2, facility.y)
 
       val customers1 = new util.ArrayList[Point](supportCustomers)
-      val firstChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
-        self, Position.TOP_LEFT, firstBoundary, threshold, depth + 1,
+      val firstChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
+        Position.TOP_LEFT, firstBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers1, ctx)})
+      firstChild ! Rfmsg(ctx.self)
 
       val customers2 = new util.ArrayList[Point](supportCustomers)
-      val secondChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
-        self, Position.TOP_RIGHT, secondBoundary, threshold, depth + 1,
+      val secondChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
+        Position.TOP_RIGHT, secondBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers2, ctx)})
+      secondChild ! Rfmsg(ctx.self)
 
       val customers3 = new util.ArrayList[Point](supportCustomers)
-      val thirdChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
-        self, Position.BOT_LEFT, thirdBoundary, threshold, depth + 1,
+      val thirdChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
+        Position.BOT_LEFT, thirdBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers3, ctx)})
+      thirdChild ! Rfmsg(ctx.self)
 
       val customers4 = new util.ArrayList[Point](supportCustomers)
-      val fourthChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
-        self, Position.BOT_RIGHT, fourthBoundary, threshold, depth + 1,
+      val fourthChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
+        Position.BOT_RIGHT, fourthBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers4, ctx)})
-
+      fourthChild ! Rfmsg(ctx.self)
 
       children = List[ActorRef[Msg]](firstChild, secondChild, thirdChild, fourthChild)
       childrenBoundaries = List[Box](firstBoundary, secondBoundary, thirdBoundary, fourthBoundary)

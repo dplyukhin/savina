@@ -44,13 +44,16 @@ object SieveAkkaActorBenchmark {
   }
 
   trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   case class LongBox(value: Long) extends Msg with NoRefs
   case class RefMsg(actorRef: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(actorRef)
   }
   case class StringMsg(value: String) extends Msg with NoRefs
 
-  private class NumberProducerActor(limit: Long) extends GCActor[Msg](ctx) {
+  private class NumberProducerActor(limit: Long, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     override def process(msg: Msg) {
       msg match {
         case RefMsg(filterActor) =>
@@ -65,7 +68,7 @@ object SieveAkkaActorBenchmark {
     }
   }
 
-  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int) extends GCActor[Msg](ctx) {
+  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     var nextFilterActor: ActorRef[Msg] = null
     val localPrimes = new Array[Long](numMaxLocalPrimes)
@@ -82,7 +85,7 @@ object SieveAkkaActorBenchmark {
         availableLocalPrimes += 1
       } else {
         // Create a new actor to store the new prime
-        nextFilterActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, ctx)})
+        nextFilterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, ctx)})
       }
     }
 

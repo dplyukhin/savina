@@ -41,6 +41,9 @@ object BigAkkaActorBenchmark {
   }
 
   trait Msg extends Message
+  case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   case class NeighborMessage(neighbors: Array[ActorRef[Msg]]) extends Msg {
     def refs: Iterable[ActorRef[_]] = neighbors
   }
@@ -53,7 +56,8 @@ object BigAkkaActorBenchmark {
       val sinkActor = ctx.spawnAnonymous(Behaviors.setup[Msg](ctx => new SinkActor(BigConfig.W, ctx)))
 
       val bigActors = Array.tabulate[ActorRef[Msg]](BigConfig.W)(i => {
-        val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg](ctx => new BigActor(i, BigConfig.N, sinkActor, latch, ctx)))
+        val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg](ctx => new BigActor(i, BigConfig.N, latch, ctx)))
+        loopActor ! Rfmsg(sinkActor)
         loopActor
       })
 

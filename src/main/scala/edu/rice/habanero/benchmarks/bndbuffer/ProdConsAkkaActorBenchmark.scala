@@ -46,31 +46,41 @@ object ProdConsAkkaActorBenchmark {
     }
 
     private trait Msg extends Message
-    private case class DataItemMessage(d: Double, ref: ActorRef[Msg]) extends Msg {
-      override def refs: Iterable[ActorRef[_]] = Some(ref)
+    private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+      override def refs: Iterable[ActorRef[_]] = Some(actor)
+    }
+    private case class DataItemMessage(data: Double, producer: ActorRef[Msg]) extends Msg {
+      override def refs: Iterable[ActorRef[_]] = Some(producer)
     }
     private case object ProduceDataMessage extends Msg with NoRefs
     private case object ProducerExitMessage extends Msg with NoRefs
-    private case class ConsumerAvailableMessage(ref: ActorRef[Msg]) extends Msg {
-      override def refs: Iterable[ActorRef[_]] = Some(ref)
+    private case class ConsumerAvailableMessage(consumer: ActorRef[Msg]) extends Msg {
+      override def refs: Iterable[ActorRef[_]] = Some(consumer)
     }
     private case object ConsumerExitMessage extends Msg with NoRefs
 
 
     private class ManagerActor(bufferSize: Int, numProducers: Int, numConsumers: Int, numItemsPerProducer: Int,
-                               ctx: ActorContext[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+                               ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
 
       private val adjustedBufferSize: Int = bufferSize - numProducers
       private val availableProducers = new ListBuffer[ActorRef[Msg]]
       private val availableConsumers = new ListBuffer[ActorRef[Msg]]
-      private val pendingData = new ListBuffer[ProdConsBoundedBufferConfig.DataItemMessage]
+      private val pendingData = new ListBuffer[DataItemMessage]
       private var numTerminatedProducers: Int = 0
 
-      private val producers = Array.tabulate[ActorRef[Msg]](numProducers)(i =>
-        ctx.spawnAnonymous(Behaviors.setup { ctx => new ProducerActor(i, self, numItemsPerProducer, ctx)}))
-      private val consumers = Array.tabulate[ActorRef[Msg]](numConsumers)(i =>
-        ctx.spawnAnonymous(Behaviors.setup { ctx => new ConsumerActor(i, self, ctx)}))
+      private val producers = Array.tabulate[ActorRef[Msg]](numProducers)(i => {
+        val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(i, numItemsPerProducer, ctx)})
+        actor ! Rfmsg(ctx.self)
+        actor
+      })
+      private val consumers = Array.tabulate[ActorRef[Msg]](numConsumers)(i => {
+        val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ConsumerActor(i, ctx)})
+        actor ! Rfmsg(ctx.self)
+        actor
+      }
+      )
 
       override def onPostStart() {
         consumers.foreach(loopConsumer => {
@@ -90,8 +100,8 @@ object ProdConsAkkaActorBenchmark {
 
       override def process(theMsg: Msg) {
         theMsg match {
-          case dm: ProdConsBoundedBufferConfig.DataItemMessage =>
-            val producer: ActorRef[Msg] = dm.producer.asInstanceOf[ActorRef[Msg]]
+          case dm: DataItemMessage =>
+            val producer: ActorRef[Msg] = dm.producer
             if (availableConsumers.isEmpty) {
               pendingData.append(dm)
             } else {
@@ -102,8 +112,8 @@ object ProdConsAkkaActorBenchmark {
             } else {
               producer ! ProduceDataMessage
             }
-          case cm: ProdConsBoundedBufferConfig.ConsumerAvailableMessage =>
-            val consumer: ActorRef[Msg] = cm.consumer.asInstanceOf[ActorRef[Msg]]
+          case cm: ConsumerAvailableMessage =>
+            val consumer: ActorRef[Msg] = cm.consumer
             if (pendingData.isEmpty) {
               availableConsumers.append(consumer)
               tryExit()
@@ -113,7 +123,7 @@ object ProdConsAkkaActorBenchmark {
                 availableProducers.remove(0) ! ProduceDataMessage
               }
             }
-          case _: ProdConsBoundedBufferConfig.ProducerExitMessage =>
+          case ProducerExitMessage =>
             numTerminatedProducers += 1
             tryExit()
           case msg =>
@@ -129,27 +139,28 @@ object ProdConsAkkaActorBenchmark {
       }
     }
 
-    private class ProducerActor(id: Int, manager: ActorRef[Msg], numItemsToProduce: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private class ProducerActor(id: Int, numItemsToProduce: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+      private var manager: ActorRef[Msg] = _
       private var prodItem: Double = 0.0
       private var itemsProduced: Int = 0
 
       private def produceData() {
         prodItem = processItem(prodItem, prodCost)
-        manager ! new ProdConsBoundedBufferConfig.DataItemMessage(prodItem, self)
+        manager ! new DataItemMessage(prodItem, ctx.self)
         itemsProduced += 1
       }
 
       override def process(theMsg: Msg) {
-        if (theMsg.isInstanceOf[ProdConsBoundedBufferConfig.ProduceDataMessage]) {
-          if (itemsProduced == numItemsToProduce) {
-            exit()
-          } else {
-            produceData()
-          }
-        } else {
-          val ex = new IllegalArgumentException("Unsupported message: " + theMsg)
-          ex.printStackTrace(System.err)
+        theMsg match {
+          case Rfmsg(x) =>
+            this.manager = x
+          case ProduceDataMessage =>
+            if (itemsProduced == numItemsToProduce) {
+              exit()
+            } else {
+              produceData()
+            }
         }
       }
 
@@ -158,9 +169,10 @@ object ProdConsAkkaActorBenchmark {
       }
     }
 
-    private class ConsumerActor(id: Int, manager: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private class ConsumerActor(id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-      private val consumerAvailableMessage = new ProdConsBoundedBufferConfig.ConsumerAvailableMessage(self)
+      private var manager: ActorRef[Msg] = _
+      private val consumerAvailableMessage = new ConsumerAvailableMessage(ctx.self)
       private var consItem: Double = 0
 
       protected def consumeDataItem(dataToConsume: Double) {
@@ -169,10 +181,11 @@ object ProdConsAkkaActorBenchmark {
 
       override def process(theMsg: Msg) {
         theMsg match {
-          case dm: ProdConsBoundedBufferConfig.DataItemMessage =>
+          case Rfmsg(x) => this.manager = x
+          case dm: DataItemMessage =>
             consumeDataItem(dm.data)
             manager ! consumerAvailableMessage
-          case _: ProdConsBoundedBufferConfig.ConsumerExitMessage =>
+          case ConsumerExitMessage =>
             exit()
           case msg =>
             val ex = new IllegalArgumentException("Unsupported message: " + msg)

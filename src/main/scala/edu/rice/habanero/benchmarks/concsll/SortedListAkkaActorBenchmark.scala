@@ -41,6 +41,12 @@ object SortedListAkkaActorBenchmark {
   }
 
   private trait Msg extends Message
+  private case class MasterListMsg(master: ActorRef[Msg], sortedList: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(master, sortedList)
+  }
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class WriteMessage(sender: ActorRef[Msg], value: Int) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(sender)
   }
@@ -59,48 +65,60 @@ object SortedListAkkaActorBenchmark {
   private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
-    private final val sortedList = ctx.spawnAnonymous(Behaviors.setup { ctx => new SortedList(ctx)})
-    ctx.sp
+    private final val sortedList = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SortedList(ctx)})
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
 
       var i: Int = 0
       while (i < numWorkers) {
-        workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, sortedList, i, numMessagesPerWorker, ctx)})
+        workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})
+        workers(i) ! MasterListMsg(ctx.self, sortedList)
         workers(i) ! DoWorkMessage
         i += 1
       }
     }
 
     override def process(msg: Msg) {
-      if (msg.isInstanceOf[SortedListConfig.EndWorkMessage]) {
-        numWorkersTerminated += 1
-        if (numWorkersTerminated == numWorkers) {
-          sortedList ! EndWorkMessage
-          exit()
-        }
+      msg match {
+        case EndWorkMessage =>
+          numWorkersTerminated += 1
+          if (numWorkersTerminated == numWorkers) {
+            sortedList ! EndWorkMessage
+            exit()
+          }
+        case _ =>
       }
     }
   }
 
-  private class Worker(master: ActorRef[Msg], sortedList: ActorRef[Msg], id: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Worker(id: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var master: ActorRef[Msg] = _
+    private var sortedList: ActorRef[Msg] = _
     private final val writePercent = SortedListConfig.WRITE_PERCENTAGE
     private final val sizePercent = SortedListConfig.SIZE_PERCENTAGE
     private var messageCount: Int = 0
     private final val random = new PseudoRandom(id + numMessagesPerWorker + writePercent + sizePercent)
 
     override def process(msg: Msg) {
+      msg match {
+        case MasterListMsg(master, sortedList) =>
+          this.master = master
+          this.sortedList = sortedList
+          return
+
+        case _ =>
+      }
       messageCount += 1
       if (messageCount <= numMessagesPerWorker) {
         val anInt: Int = random.nextInt(100)
         if (anInt < sizePercent) {
-          sortedList ! new SortedListConfig.SizeMessage(self)
+          sortedList ! new SizeMessage(ctx.self)
         } else if (anInt < (sizePercent + writePercent)) {
-          sortedList ! new SortedListConfig.WriteMessage(self, random.nextInt)
+          sortedList ! new WriteMessage(ctx.self, random.nextInt)
         } else {
-          sortedList ! new SortedListConfig.ContainsMessage(self, random.nextInt)
+          sortedList ! new ContainsMessage(ctx.self, random.nextInt)
         }
       } else {
         master ! EndWorkMessage
@@ -109,27 +127,27 @@ object SortedListAkkaActorBenchmark {
     }
   }
 
-  private class SortedList extends GCActor[Msg](ctx) {
+  private class SortedList(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private[concsll] final val dataList = new SortedLinkedList[Integer]
 
     override def process(msg: Msg) {
       msg match {
-        case writeMessage: SortedListConfig.WriteMessage =>
+        case writeMessage: WriteMessage =>
           val value: Int = writeMessage.value
           dataList.add(value)
-          val sender = writeMessage.sender.asInstanceOf[ActorRef[Msg]]
-          sender ! new SortedListConfig.ResultMessage(self, value)
-        case containsMessage: SortedListConfig.ContainsMessage =>
+          val sender = writeMessage.sender
+          sender ! new ResultMessage(ctx.self, value)
+        case containsMessage: ContainsMessage =>
           val value: Int = containsMessage.value
           val result: Int = if (dataList.contains(value)) 1 else 0
-          val sender = containsMessage.sender.asInstanceOf[ActorRef[Msg]]
-          sender ! new SortedListConfig.ResultMessage(self, result)
-        case readMessage: SortedListConfig.SizeMessage =>
+          val sender = containsMessage.sender
+          sender ! new ResultMessage(ctx.self, result)
+        case readMessage: SizeMessage =>
           val value: Int = dataList.size
-          val sender = readMessage.sender.asInstanceOf[ActorRef[Msg]]
-          sender ! new SortedListConfig.ResultMessage(self, value)
-        case _: SortedListConfig.EndWorkMessage =>
+          val sender = readMessage.sender
+          sender ! new ResultMessage(ctx.self, value)
+        case EndWorkMessage =>
           printf(BenchmarkRunner.argOutputFormat, "List Size", dataList.size)
           exit()
         case _ =>

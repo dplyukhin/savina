@@ -48,6 +48,9 @@ object PiPrecisionAkkaActorBenchmark {
 
   private trait Msg extends Message
 
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case object StartMessage extends Msg with NoRefs
   private case object StopMessage extends Msg with NoRefs
   private case class WorkMessage(scale: Int, term: Int) extends Msg with NoRefs
@@ -55,7 +58,11 @@ object PiPrecisionAkkaActorBenchmark {
 
   private class Master(numWorkers: Int, scale: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, i, ctx)}))
+    private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
+      val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, ctx) })
+      a ! Rfmsg(ctx.self)
+      a
+    })
     private var result: BigDecimal = BigDecimal.ZERO
     private final val tolerance = BigDecimal.ONE.movePointLeft(scale)
     private final val numWorkersTerminated: AtomicInteger = new AtomicInteger(0)
@@ -63,8 +70,6 @@ object PiPrecisionAkkaActorBenchmark {
     private var numTermsReceived: Int = 0
     private var stopRequests: Boolean = false
 
-    override def onPostStart() {
-    }
 
     /**
      * Generates work for the given worker
@@ -72,7 +77,7 @@ object PiPrecisionAkkaActorBenchmark {
      * @param workerId the id of te worker to send work
      */
     private def generateWork(workerId: Int) {
-      val wm: PiPrecisionConfig.WorkMessage = new PiPrecisionConfig.WorkMessage(scale, numTermsRequested)
+      val wm: WorkMessage = new WorkMessage(scale, numTermsRequested)
       workers(workerId) ! wm
       numTermsRequested += 1
     }
@@ -85,7 +90,7 @@ object PiPrecisionAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
-        case rm: PiPrecisionConfig.ResultMessage =>
+        case rm: ResultMessage =>
           numTermsReceived += 1
           result = result.add(rm.result)
           if (rm.result.compareTo(tolerance) <= 0) {
@@ -97,12 +102,12 @@ object PiPrecisionAkkaActorBenchmark {
           if (numTermsReceived == numTermsRequested) {
             requestWorkersToExit()
           }
-        case _: PiPrecisionConfig.StopMessage =>
+        case StopMessage =>
           val numTerminated: Int = numWorkersTerminated.incrementAndGet
           if (numTerminated == numWorkers) {
             exit()
           }
-        case _: PiPrecisionConfig.StartMessage =>
+        case StartMessage =>
           var t: Int = 0
           while (t < Math.min(scale, 10 * numWorkers)) {
             generateWork(t % numWorkers)
@@ -124,12 +129,12 @@ object PiPrecisionAkkaActorBenchmark {
     override def process(msg: Msg) {
       msg match {
         case Rfmsg(master) => this.master = master
-        case _: PiPrecisionConfig.StopMessage =>
-          master ! new PiPrecisionConfig.StopMessage
+        case StopMessage =>
+          master ! StopMessage
           exit()
-        case wm: PiPrecisionConfig.WorkMessage =>
+        case wm: WorkMessage =>
           val result: BigDecimal = PiPrecisionConfig.calculateBbpTerm(wm.scale, wm.term)
-          master ! new PiPrecisionConfig.ResultMessage(result, id)
+          master ! new ResultMessage(result, id)
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)

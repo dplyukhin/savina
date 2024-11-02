@@ -43,6 +43,9 @@ object CigaretteSmokerAkkaActorBenchmark {
   }
 
   private trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class StartSmoking(val busyWaitPeriod: Int) extends Msg with NoRefs
   private case object StartedSmoking extends Msg with NoRefs
   private case object StartMessage extends Msg with NoRefs
@@ -52,22 +55,22 @@ object CigaretteSmokerAkkaActorBenchmark {
 
   private class ArbiterActor(numRounds: Int, numSmokers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i =>
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new SmokerActor(self, ctx) }))
+    private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i => {
+      val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SmokerActor(ctx) })
+      actor ! Rfmsg(ctx.self)
+      actor
+    })
     private val random = new PseudoRandom(numRounds * numSmokers)
     private var roundsSoFar = 0
 
-    override def onPostStart() {
-    }
-
     override def process(msg: Msg) {
       msg match {
-        case sm: StartMessage =>
+        case StartMessage =>
 
           // choose a random smoker to start smoking
           notifyRandomSmoker()
 
-        case sm: StartedSmoking =>
+        case StartedSmoking =>
 
           // resources are off the table, can place new ones on the table
           roundsSoFar += 1
@@ -96,9 +99,11 @@ object CigaretteSmokerAkkaActorBenchmark {
     }
   }
 
-  private class SmokerActor(arbiterActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class SmokerActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    var arbiterActor: ActorRef[Msg] = _
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.arbiterActor = x
         case sm: StartSmoking =>
 
           // notify arbiter that started smoking

@@ -44,40 +44,42 @@ object LogisticMapAkkaManualStashActorBenchmark {
   }
 
   private trait Msg extends Message
-  private case object StartMsg extends Msg with NoRefs
-  private case object StopMsg extends Msg with NoRefs
-  private case object NextTermMsg extends Msg with NoRefs
-  private case object GetTermMsg extends Msg with NoRefs
-  private case class ComputeMsg(sender: ActorRef[Msg], term: Double) extends Msg {
+  private case class MasterComputerMsg(master: ActorRef[Msg], computer: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(master, computer)
+  }
+  private case object StartMessage extends Msg with NoRefs
+  private case object StopMessage extends Msg with NoRefs
+  private case object NextTermMessage extends Msg with NoRefs
+  private case object GetTermMessage extends Msg with NoRefs
+  private case class ComputeMessage(sender: ActorRef[Msg], term: Double) extends Msg {
     override def refs: Iterable[ActorRef[_]] = Some(sender)
   }
-  private case class ResultMsg(term: Double) extends Msg with NoRefs
+  private case class ResultMessage(term: Double) extends Msg with NoRefs
 
-  private class Master extends GCActor[Msg](ctx) {
+  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val numComputers: Int = LogisticMapConfig.numSeries
     private final val computers = Array.tabulate[ActorRef[Msg]](numComputers)(i => {
       val rate = LogisticMapConfig.startRate + (i * LogisticMapConfig.increment)
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new RateComputer(rate, ctx)})
+      ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new RateComputer(rate, ctx)})
     })
 
     private final val numWorkers: Int = LogisticMapConfig.numSeries
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val rateComputer = computers(i % numComputers)
       val startTerm = i * LogisticMapConfig.increment
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new SeriesWorker(i, self, rateComputer, startTerm, ctx)})
+      val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SeriesWorker(i, startTerm, ctx)})
+      a ! MasterComputerMsg(ctx.self, rateComputer)
+      a
     })
 
     private var numWorkRequested: Int = 0
     private var numWorkReceived: Int = 0
     private var termsSum: Double = 0
 
-    protected override def onPostStart() {
-    }
-
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: StartMessage =>
+        case StartMessage =>
 
           var i: Int = 0
           while (i < LogisticMapConfig.numTerms) {
@@ -120,14 +122,23 @@ object LogisticMapAkkaManualStashActorBenchmark {
     }
   }
 
-  private class SeriesWorker(id: Int, master: ActorRef[Msg], computer: ActorRef[Msg], startTerm: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class SeriesWorker(id: Int, startTerm: Double, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var master: ActorRef[Msg] = _
+    private var computer: ActorRef[Msg] = _
     private final val curTerm = Array.tabulate[Double](1)(i => startTerm)
 
     private var inReplyMode = false
     private val stashedMessages = new util.LinkedList[Msg]()
 
     override def process(theMsg: Msg) {
+      theMsg match {
+        case MasterComputerMsg(x,y) =>
+          this.master = x
+          this.computer = y
+          return
+        case _ =>
+      }
 
       if (inReplyMode) {
 
@@ -148,14 +159,14 @@ object LogisticMapAkkaManualStashActorBenchmark {
         // process the message
         theMsg match {
 
-          case computeMessage: NextTermMessage =>
+          case NextTermMessage =>
 
-            val sender = self
+            val sender = ctx.self
             val newMessage = new ComputeMessage(sender, curTerm(0))
             computer ! newMessage
             inReplyMode = true
 
-          case message: GetTermMessage =>
+          case message: GetTermMessage.type =>
 
             // do not reply to master if stash is not empty
             if (stashedMessages.isEmpty) {
@@ -164,7 +175,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
               stashedMessages.add(message)
             }
 
-          case _: StopMessage =>
+          case StopMessage =>
 
             exit()
 
@@ -177,7 +188,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
       // recycle stashed messages
       if (!inReplyMode && !stashedMessages.isEmpty) {
         val newMsg = stashedMessages.remove(0)
-        self ! newMsg
+        ctx.self ! newMsg
       }
     }
   }
@@ -190,9 +201,9 @@ object LogisticMapAkkaManualStashActorBenchmark {
 
           val result = computeNextTerm(computeMessage.term, rate)
           val resultMessage = new ResultMessage(result)
-          sender() ! resultMessage
+          computeMessage.sender ! resultMessage
 
-        case _: StopMessage =>
+        case StopMessage =>
 
           exit()
 

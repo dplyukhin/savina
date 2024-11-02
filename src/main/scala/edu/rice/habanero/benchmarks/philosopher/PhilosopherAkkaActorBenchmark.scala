@@ -36,7 +36,7 @@ object PhilosopherAkkaActorBenchmark {
 
       val arbitrator = system.actorOf(Props(new ArbitratorActor(PhilosopherConfig.N)))
 
-      val philosophers = Array.tabulate[ActorRef](PhilosopherConfig.N)(i => {
+      val philosophers = Array.tabulate[ActorRef[Msg]](PhilosopherConfig.N)(i => {
         val loopActor = system.actorOf(Props(new PhilosopherActor(i, PhilosopherConfig.M, counter, arbitrator)))
         loopActor
       })
@@ -57,6 +57,9 @@ object PhilosopherAkkaActorBenchmark {
   }
 
   trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   case class StartMessage() extends Msg with NoRefs
 
   case class ExitMessage() extends Msg with NoRefs
@@ -72,16 +75,18 @@ object PhilosopherAkkaActorBenchmark {
   case class DeniedMessage() extends Msg with NoRefs
 
 
-  private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, arbitrator: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var arbitrator: ActorRef[Msg] = _
     private var localCounter = 0L
     private var roundsSoFar = 0
 
-    private val myHungryMessage = HungryMessage(self, id)
+    private val myHungryMessage = HungryMessage(ctx.self, id)
     private val myDoneMessage = DoneMessage(id)
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.arbitrator = x
 
         case dm: DeniedMessage =>
 
@@ -95,7 +100,7 @@ object PhilosopherAkkaActorBenchmark {
 
           arbitrator ! myDoneMessage
           if (roundsSoFar < rounds) {
-            self ! StartMessage()
+            ctx.self ! StartMessage()
           } else {
             arbitrator ! ExitMessage()
             exit()

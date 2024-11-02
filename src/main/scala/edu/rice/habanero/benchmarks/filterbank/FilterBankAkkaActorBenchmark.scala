@@ -8,7 +8,6 @@ import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 import java.util.Collection
-import scala.collection.JavaConversions._
 
 /**
  *
@@ -61,6 +60,9 @@ object FilterBankAkkaActorBenchmark {
 
 
   private trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class NextMessage(source: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(source)
   }
@@ -70,14 +72,14 @@ object FilterBankAkkaActorBenchmark {
   private case class SourcedValueMessage(sourceId: Int, value: Double) extends Msg with NoRefs
   private case class CollectionMessage[T](values: util.Collection[T]) extends Msg with NoRefs
 
-  private class ProducerActor(numSimulations: Int) extends AkkaActor[Msg] {
+  private class ProducerActor(numSimulations: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var numMessagesSent: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.NextMessage =>
-          val source = message.source.asInstanceOf[ActorRef[Msg]]
+        case message: NextMessage =>
+          val source = message.source
           if (numMessagesSent == numSimulations) {
             source ! ExitMessage
             exit()
@@ -93,9 +95,23 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private abstract class FilterBankActor(nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
+  private class SourceActor(producer: ActorRef[Msg], nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    protected override def onPostStart() {
+    private final val maxValue: Int = 1000
+    private var current: Int = 0
+
+    override def process(theMsg: Msg) {
+      theMsg match {
+        case BootMessage =>
+          nextActor ! new ValueMessage(current)
+          current = (current + 1) % maxValue
+          producer ! new NextMessage(ctx.self)
+        case ExitMessage =>
+          exit()
+        case message =>
+          val ex = new IllegalArgumentException("Unsupported message: " + message)
+          ex.printStackTrace(System.err)
+      }
     }
 
     protected override def onPostExit() {
@@ -103,39 +119,19 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class SourceActor(producer: ActorRef[Msg], nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
-
-    private final val maxValue: Int = 1000
-    private var current: Int = 0
-
-    override def process(theMsg: Msg) {
-      theMsg match {
-        case _: FilterBankConfig.BootMessage =>
-          nextActor ! new FilterBankConfig.ValueMessage(current)
-          current = (current + 1) % maxValue
-          producer ! new FilterBankConfig.NextMessage(self)
-        case _: FilterBankConfig.ExitMessage =>
-          exit()
-        case message =>
-          val ex = new IllegalArgumentException("Unsupported message: " + message)
-          ex.printStackTrace(System.err)
-      }
-    }
-  }
-
-  private class SinkActor(printRate: Int) extends AkkaActor[Msg] {
+  private class SinkActor(printRate: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var count: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.ValueMessage =>
+        case message: ValueMessage =>
           val result: Double = message.value
           if (FilterBankConfig.debug && (count == 0)) {
             System.out.println("SinkActor: result = " + result)
           }
           count = (count + 1) % printRate
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
@@ -144,14 +140,13 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
+  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new BankActor(i, numColumns, H(i), F(i), nextActor, ctx)})
+      val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BankActor(i, numColumns, H(i), F(i), ctx)})
+      actor ! Rfmsg(nextActor)
+      actor
     })
-
-    protected override def onPostStart() {
-    }
 
     protected override def onPostExit() {
       for (loopBank <- banks) {
@@ -161,11 +156,11 @@ object FilterBankAkkaActorBenchmark {
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: FilterBankConfig.ValueMessage =>
+        case _: ValueMessage =>
           for (loopBank <- banks) {
             loopBank ! theMsg
           }
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
@@ -174,17 +169,10 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef[Msg]) extends AkkaActor[Msg] {
+  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private final val firstActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new DelayActor(sourceId + ".1", numColumns - 1,
-      ctx.spawnAnonymous(Behaviors.setup { ctx => new FirFilterActor(sourceId + ".1", numColumns, H,
-        ctx.spawnAnonymous(Behaviors.setup { ctx => new SampleFilterActor(numColumns,
-          ctx.spawnAnonymous(Behaviors.setup { ctx => new DelayActor(sourceId + ".2", numColumns - 1,
-            ctx.spawnAnonymous(Behaviors.setup { ctx => new FirFilterActor(sourceId + ".2", numColumns, F,
-              ctx.spawnAnonymous(Behaviors.setup { ctx => new TaggedForwardActor(sourceId, integrator))))))))))))))))))
-
-    protected override def onPostStart() {
-    }
+    private var integrator: ActorRef[Msg] = _
+    private var firstActor: ActorRef[Msg] = _
 
     protected override def onPostExit() {
       firstActor ! ExitMessage
@@ -192,9 +180,23 @@ object FilterBankAkkaActorBenchmark {
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: FilterBankConfig.ValueMessage =>
+        case Rfmsg(x) =>
+          integrator = x
+
+          firstActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DelayActor(sourceId + ".1", numColumns - 1, ctx)})
+          val secondActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new FirFilterActor(sourceId + ".1", numColumns, H, ctx)})
+          firstActor ! Rfmsg(secondActor)
+          val thirdActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SampleFilterActor(numColumns, ctx)})
+          secondActor ! Rfmsg(thirdActor)
+          val fourthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DelayActor(sourceId + ".2", numColumns - 1, ctx)})
+          thirdActor ! Rfmsg(fourthActor)
+          val fifthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new FirFilterActor(sourceId + ".2", numColumns, F, ctx)})
+          fourthActor ! Rfmsg(fifthActor)
+          val sixthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new TaggedForwardActor(sourceId, ctx)})
+          sixthActor ! Rfmsg(integrator)
+        case _: ValueMessage =>
           firstActor ! theMsg
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
@@ -203,36 +205,45 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class DelayActor(sourceId: String, delayLength: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class DelayActor(sourceId: String, delayLength: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     private final val state = Array.tabulate[Double](delayLength)(i => 0)
     private var placeHolder: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.ValueMessage =>
+        case Rfmsg(x) =>
+          nextActor = x
+        case message: ValueMessage =>
           val result: Double = message.value
-          nextActor ! new FilterBankConfig.ValueMessage(state(placeHolder))
+          nextActor ! new ValueMessage(state(placeHolder))
           state(placeHolder) = result
           placeHolder = (placeHolder + 1) % delayLength
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)
       }
     }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
+    }
   }
 
-  private class FirFilterActor(sourceId: String, peekLength: Int, coefficients: Array[Double], nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class FirFilterActor(sourceId: String, peekLength: Int, coefficients: Array[Double], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     private var data = Array.tabulate[Double](peekLength)(i => 0)
     private var dataIndex: Int = 0
     private var dataFull: Boolean = false
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.ValueMessage =>
+        case Rfmsg(x) =>
+          nextActor = x
+        case message: ValueMessage =>
           val result: Double = message.value
           data(dataIndex) = result
           dataIndex += 1
@@ -247,65 +258,83 @@ object FilterBankAkkaActorBenchmark {
               sum += (data(i) * coefficients(peekLength - i - 1))
               i += 1
             }
-            nextActor ! new FilterBankConfig.ValueMessage(sum)
+            nextActor ! new ValueMessage(sum)
           }
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case _ =>
       }
     }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
+    }
   }
 
   private object SampleFilterActor {
-    private final val ZERO_RESULT: FilterBankConfig.ValueMessage = new FilterBankConfig.ValueMessage(0)
+    private final val ZERO_RESULT: ValueMessage = ValueMessage(0)
   }
 
-  private class SampleFilterActor(sampleRate: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class SampleFilterActor(sampleRate: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     private var samplesReceived: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: FilterBankConfig.ValueMessage =>
+        case Rfmsg(x) =>
+          nextActor = x
+        case _: ValueMessage =>
           if (samplesReceived == 0) {
             nextActor ! theMsg
           } else {
             nextActor ! SampleFilterActor.ZERO_RESULT
           }
           samplesReceived = (samplesReceived + 1) % sampleRate
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)
       }
     }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
+    }
   }
 
-  private class TaggedForwardActor(sourceId: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class TaggedForwardActor(sourceId: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.ValueMessage =>
+        case Rfmsg(x) =>
+          nextActor = x
+        case message: ValueMessage =>
           val result: Double = message.value
-          nextActor ! new FilterBankConfig.SourcedValueMessage(sourceId, result)
-        case _: FilterBankConfig.ExitMessage =>
+          nextActor ! new SourcedValueMessage(sourceId, result)
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)
       }
     }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
+    }
   }
 
-  private class IntegratorActor(numChannels: Int, nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class IntegratorActor(numChannels: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     private final val data = new java.util.ArrayList[util.Map[Integer, Double]]
     private var exitsReceived: Int = 0
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.SourcedValueMessage =>
+        case Rfmsg(x) =>
+          nextActor = x
+        case message: SourcedValueMessage =>
           val sourceId: Int = message.sourceId
           val result: Double = message.value
           val dataSize: Int = data.size
@@ -327,10 +356,10 @@ object FilterBankAkkaActorBenchmark {
           }
           val firstMap: java.util.Map[Integer, Double] = data.get(0)
           if (firstMap.size == numChannels) {
-            nextActor ! new FilterBankConfig.CollectionMessage[Double](firstMap.values)
+            nextActor ! new CollectionMessage[Double](firstMap.values)
             data.remove(0)
           }
-        case _: FilterBankConfig.ExitMessage =>
+        case ExitMessage =>
           exitsReceived += 1
           if (exitsReceived == numChannels) {
             exit()
@@ -340,25 +369,35 @@ object FilterBankAkkaActorBenchmark {
           ex.printStackTrace(System.err)
       }
     }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
+    }
   }
 
-  private class CombineActor(nextActor: ActorRef[Msg]) extends FilterBankActor(nextActor) {
+  private class CombineActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     override def process(theMsg: Msg) {
       theMsg match {
-        case message: FilterBankConfig.CollectionMessage[_] =>
-          val result = message.values.asInstanceOf[util.Collection[Double]]
+        case Rfmsg(x) =>
+          nextActor = x
+        case message: CollectionMessage[_] =>
+          import scala.jdk.CollectionConverters._
+          val result = message.values.asInstanceOf[util.Collection[Double]].asScala
           var sum: Double = 0
           for (loopValue <- result) {
             sum += loopValue
           }
-          nextActor ! new FilterBankConfig.ValueMessage(sum)
-        case _: FilterBankConfig.ExitMessage =>
+          nextActor ! new ValueMessage(sum)
+        case ExitMessage =>
           exit()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)
       }
+    }
+    protected override def onPostExit() {
+      nextActor ! ExitMessage
     }
   }
 

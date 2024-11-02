@@ -44,6 +44,12 @@ object DictionaryAkkaActorBenchmark {
   }
 
   private trait Msg extends Message
+  private case class MasterDictMsg(master: ActorRef[Msg], dictionary: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(master, dictionary)
+  }
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case class WriteMessage(sender: ActorRef[Msg], _key: Int, value: Int) extends Msg {
     val key = Math.abs(_key) % DATA_LIMIT
     override def refs: Iterable[ActorRef[_]] = Some(sender)
@@ -62,45 +68,56 @@ object DictionaryAkkaActorBenchmark {
   private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
-    private final val dictionary = ctx.spawnAnonymous(Behaviors.setup { ctx => new Dictionary(DictionaryConfig.DATA_MAP, ctx)})
+    private final val dictionary = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Dictionary(DictionaryConfig.DATA_MAP, ctx)})
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
 
       var i: Int = 0
       while (i < numWorkers) {
-        workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, dictionary, i, numMessagesPerWorker, ctx)})
-
+        workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})
+        workers(i) ! MasterDictMsg(ctx.self, dictionary)
         workers(i) ! DoWorkMessage
         i += 1
       }
     }
 
     override def process(msg: Msg) {
-      if (msg.isInstanceOf[DictionaryConfig.EndWorkMessage]) {
-        numWorkersTerminated += 1
-        if (numWorkersTerminated == numWorkers) {
-          dictionary ! EndWorkMessage
-          exit()
-        }
+      msg match {
+        case EndWorkMessage =>
+          numWorkersTerminated += 1
+          if (numWorkersTerminated == numWorkers) {
+            dictionary ! EndWorkMessage
+            exit()
+          }
+        case _ =>
       }
     }
   }
 
-  private class Worker(master: ActorRef[Msg], dictionary: ActorRef[Msg], id: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Worker(id: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var dictionary: ActorRef[Msg] = _
+    private var master: ActorRef[Msg] = _
     private final val writePercent = DictionaryConfig.WRITE_PERCENTAGE
     private var messageCount: Int = 0
     private final val random = new util.Random(id + numMessagesPerWorker + writePercent)
 
     override def process(msg: Msg) {
+      msg match {
+        case MasterDictMsg(master, dictionary) =>
+          this.master = master
+          this.dictionary = dictionary
+          return
+        case _ =>
+      }
       messageCount += 1
       if (messageCount <= numMessagesPerWorker) {
         val anInt: Int = random.nextInt(100)
         if (anInt < writePercent) {
-          dictionary ! new WriteMessage(self, random.nextInt, random.nextInt)
+          dictionary ! new WriteMessage(ctx.self, random.nextInt, random.nextInt)
         } else {
-          dictionary ! new ReadMessage(self, random.nextInt)
+          dictionary ! new ReadMessage(ctx.self, random.nextInt)
         }
       } else {
         master ! EndWorkMessage
@@ -115,17 +132,17 @@ object DictionaryAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
-        case writeMessage: DictionaryConfig.WriteMessage =>
+        case writeMessage: WriteMessage =>
           val key = writeMessage.key
           val value = writeMessage.value
           dataMap.put(key, value)
-          val sender = writeMessage.sender.asInstanceOf[ActorRef[Msg]]
-          sender ! new DictionaryConfig.ResultMessage(self, value)
-        case readMessage: DictionaryConfig.ReadMessage =>
+          val sender = writeMessage.sender
+          sender ! new ResultMessage(ctx.self, value)
+        case readMessage: ReadMessage =>
           val value = dataMap.get(readMessage.key)
-          val sender = readMessage.sender.asInstanceOf[ActorRef[Msg]]
-          sender ! new DictionaryConfig.ResultMessage(self, value)
-        case _: DictionaryConfig.EndWorkMessage =>
+          val sender = readMessage.sender
+          sender ! new ResultMessage(ctx.self, value)
+        case EndWorkMessage =>
           printf(BenchmarkRunner.argOutputFormat, "Dictionary Size", dataMap.size)
           exit()
         case _ =>

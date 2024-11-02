@@ -55,6 +55,9 @@ object SleepingBarberAkkaActorBenchmark {
 
 
   trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   case object Full extends Msg with NoRefs
   case object Wait extends Msg with NoRefs
   case object Next extends Msg with NoRefs
@@ -69,9 +72,9 @@ object SleepingBarberAkkaActorBenchmark {
   }
 
 
-  private class WaitingRoomActor(capacity: Int, barber: ActorRef, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class WaitingRoomActor(capacity: Int, barber: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    private val waitingCustomers = new ListBuffer[ActorRef]()
+    private val waitingCustomers = new ListBuffer[ActorRef[Msg]]()
     private var barberAsleep = true
 
     override def process(msg: Msg) {
@@ -89,7 +92,7 @@ object SleepingBarberAkkaActorBenchmark {
             if (barberAsleep) {
 
               barberAsleep = false
-              self ! Next
+              ctx.self ! Next
 
             } else {
 
@@ -99,10 +102,10 @@ object SleepingBarberAkkaActorBenchmark {
 
         case Next =>
 
-          if (waitingCustomers.size > 0) {
+          if (waitingCustomers.nonEmpty) {
 
             val customer = waitingCustomers.remove(0)
-            barber ! new Enter(customer, self)
+            barber ! new Enter(customer, ctx.self)
 
           } else {
 
@@ -111,7 +114,7 @@ object SleepingBarberAkkaActorBenchmark {
 
           }
 
-        case message: Exit =>
+        case Exit =>
 
           barber ! Exit
           exit()
@@ -183,13 +186,13 @@ object SleepingBarberAkkaActorBenchmark {
     }
 
     private def sendCustomerToRoom() {
-      val customer = ctx.spawnAnonymous(Behaviors.setup { ctx => new CustomerActor(idGenerator.incrementAndGet(),
-        self, ctx) })
+      val customer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerActor(idGenerator.incrementAndGet(), ctx) })
+      customer ! Rfmsg(ctx.self)
 
       sendCustomerToRoom(customer)
     }
 
-    private def sendCustomerToRoom(customer: ActorRef) {
+    private def sendCustomerToRoom(customer: ActorRef[Msg]) {
       val enterMessage = new Enter(customer, room)
       room ! enterMessage
     }
@@ -203,7 +206,7 @@ object SleepingBarberAkkaActorBenchmark {
         case Full =>
 
           // println("Customer-" + id + " The waiting room is full. I am leaving.")
-          factoryActor ! new Returned(self)
+          factoryActor ! new Returned(ctx.self)
 
         case Wait =>
 

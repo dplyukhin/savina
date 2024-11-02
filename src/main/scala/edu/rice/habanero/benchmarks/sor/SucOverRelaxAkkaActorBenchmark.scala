@@ -47,6 +47,9 @@ object SucOverRelaxAkkaActorBenchmark {
   }
 
   trait Msg extends Message
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
 
   case class SorBorder(borderActors: Array[ActorRef[Msg]]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = borderActors
@@ -64,7 +67,7 @@ object SucOverRelaxAkkaActorBenchmark {
 
   case class SorResultMessage(mx: Int, my: Int, mv: Double, msgRcv: Int) extends Msg with NoRefs
 
-  private class SorRunner(n: Int) extends GCActor[Msg](ctx) {
+  private class SorRunner(n: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val s = SucOverRelaxConfig.DATA_SIZES(n)
     private val part = s / 2
@@ -80,7 +83,8 @@ object SucOverRelaxAkkaActorBenchmark {
         for (j <- 0 until part) {
           val pos = i * (part + 1) + j
           c = 1 - c
-          sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup { ctx => new SorActor(pos, randoms(i)(j), c, s, part + 1, SucOverRelaxConfig.OMEGA, self, false, ctx)})
+          sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SorActor(pos, randoms(i)(j), c, s, part + 1, SucOverRelaxConfig.OMEGA, false, ctx)})
+          sorActors(pos) ! Rfmsg(ctx.self)
           if (j == (part - 1)) {
             myBorder(i) = sorActors(pos)
           }
@@ -94,7 +98,8 @@ object SucOverRelaxAkkaActorBenchmark {
         }
       }
 
-      val sorPeer = ctx.spawnAnonymous(Behaviors.setup { ctx => new SorPeer(s, part, partialMatrix, SorBorder(myBorder), self, ctx)})
+      val sorPeer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SorPeer(s, part, partialMatrix, SorBorder(myBorder), ctx)})
+      sorPeer ! Rfmsg(ctx.self)
       sorPeer ! SorBootMessage
     }
 
@@ -143,11 +148,12 @@ object SucOverRelaxAkkaActorBenchmark {
                   nx: Int,
                   ny: Int,
                   omega: Double,
-                  sorSource: ActorRef[Msg],
-                  peer: Boolean
+                  peer: Boolean,
+                  ctx: ActorContext[Msg]
                   ) extends GCActor[Msg](ctx) {
+    private var sorSource: ActorRef[Msg] = _
 
-    private val selfActor = self
+    private val selfActor = ctx.self
     private final val x = pos / ny
     private final val y = pos % ny
 
@@ -199,6 +205,8 @@ object SucOverRelaxAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(actor) =>
+          sorSource = actor
         case SorStartMessage(mi, mActors) =>
           expectingStart = false
           sorActors = mActors
@@ -250,9 +258,10 @@ object SucOverRelaxAkkaActorBenchmark {
                  partStart: Int,
                  matrixPart: Array[Array[Double]],
                  border: SorBorder,
-                 sorSource: ActorRef[Msg]
+                 ctx: ActorContext[Msg]
                  ) extends GCActor[Msg](ctx) {
 
+    private var sorSource: ActorRef[Msg] = _
     private val sorActors = Array.ofDim[ActorRef[Msg]](s * (s - partStart + 1))
 
     private def boot(): Unit = {
@@ -265,8 +274,9 @@ object SucOverRelaxAkkaActorBenchmark {
         for (j <- 1 until (s - partStart + 1)) {
           val pos = i * (s - partStart + 1) + j
           c = 1 - c
-          sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup { ctx =>
-            new SorActor(pos, matrixPart(i)(j - 1), c, s, s - partStart + 1, SucOverRelaxConfig.OMEGA, self, true, ctx)})
+          sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
+            new SorActor(pos, matrixPart(i)(j - 1), c, s, s - partStart + 1, SucOverRelaxConfig.OMEGA, true, ctx)})
+          sorActors(pos) ! Rfmsg(ctx.self)
 
           if (j == 1) {
             myBorder(i) = sorActors(pos)
@@ -290,6 +300,8 @@ object SucOverRelaxAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(actor) =>
+          sorSource = actor
         case SorBootMessage =>
           expectingBoot = false
           boot()

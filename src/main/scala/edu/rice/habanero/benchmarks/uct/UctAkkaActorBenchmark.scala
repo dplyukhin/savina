@@ -43,6 +43,12 @@ object UctAkkaActorBenchmark {
   }
 
   private trait Msg extends Message
+  private case class ParentRootMessage(parent: ActorRef[Msg], root: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(parent, root)
+  }
+  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(actor)
+  }
   private case object GetIdMessage extends Msg with NoRefs
   private case object PrintInfoMessage extends Msg with NoRefs
   private case object GenerateTreeMessage extends Msg with NoRefs
@@ -61,7 +67,7 @@ object UctAkkaActorBenchmark {
    * @author xinghuizhao
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
-  protected class RootActor extends GCActor[Msg](ctx) {
+  protected class RootActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val ran: Random = new Random(2)
     private var height: Int = 1
@@ -73,16 +79,16 @@ object UctAkkaActorBenchmark {
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: UctConfig.GenerateTreeMessage =>
+        case GenerateTreeMessage =>
           generateTree()
-        case grantMessage: UctConfig.UpdateGrantMessage =>
+        case grantMessage: UpdateGrantMessage =>
           updateGrant(grantMessage.childId)
-        case booleanMessage: UctConfig.ShouldGenerateChildrenMessage =>
-          val sender: ActorRef[Msg] = booleanMessage.sender.asInstanceOf[ActorRef[Msg]]
+        case booleanMessage: ShouldGenerateChildrenMessage =>
+          val sender: ActorRef[Msg] = booleanMessage.sender
           checkGenerateChildrenRequest(sender, booleanMessage.childHeight)
-        case _: UctConfig.PrintInfoMessage =>
+        case PrintInfoMessage =>
           printInfo()
-        case _: UctConfig.TerminateMessage =>
+        case TerminateMessage =>
           terminateMe()
         case _ =>
       }
@@ -99,7 +105,10 @@ object UctAkkaActorBenchmark {
       while (i < UctConfig.BINOMIAL_PARAM) {
 
         hasGrantChildren(i) = false
-        children(i) = NodeActor.createNodeActor(context.system, self, self, height, size + i, computationSize, urgent = false)
+        children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
+          new NodeActor(height, size + i, computationSize, urgent = false, ctx)
+        })
+        children(i) ! ParentRootMessage(ctx.self, ctx.self)
 
         i += 1
       }
@@ -128,9 +137,9 @@ object UctAkkaActorBenchmark {
           val childComp: Int = getNextNormal(UctConfig.AVG_COMP_SIZE, UctConfig.STDEV_COMP_SIZE)
           val randomInt: Int = ran.nextInt(100)
           if (randomInt > UctConfig.URGENT_NODE_PERCENT) {
-            childName ! new UctConfig.GenerateChildrenMessage(size, childComp)
+            childName ! new GenerateChildrenMessage(size, childComp)
           } else {
-            childName ! new UctConfig.UrgentGenerateChildrenMessage(ran.nextInt(UctConfig.BINOMIAL_PARAM), size, childComp)
+            childName ! new UrgentGenerateChildrenMessage(ran.nextInt(UctConfig.BINOMIAL_PARAM), size, childComp)
           }
           size += UctConfig.BINOMIAL_PARAM
           if (childHeight + 1 > height) {
@@ -215,16 +224,14 @@ object UctAkkaActorBenchmark {
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
   protected object NodeActor {
-    def createNodeActor(system: ActorSystem, parent: ActorRef[Msg], root: ActorRef[Msg], height: Int, id: Int, comp: Int, urgent: Boolean): ActorRef[Msg] = {
-      val nodeActor = system.actorOf(Props(new NodeActor(parent, root, height, id, comp, urgent)))
-      nodeActor
-    }
 
     private final val dummy: Int = 40000
   }
 
-  protected class NodeActor(myParent: ActorRef[Msg], myRoot: ActorRef[Msg], myHeight: Int, myId: Int, myCompSize: Int, isUrgent: Boolean) extends GCActor[Msg](ctx) {
+  protected class NodeActor(myHeight: Int, myId: Int, myCompSize: Int, urgent: Boolean, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var myRoot: ActorRef[Msg] = null
+    private var myParent: ActorRef[Msg] = null
     private var urgentChild: Int = 0
     private var hasChildren: Boolean = false
     private final val children = new Array[ActorRef[Msg]](UctConfig.BINOMIAL_PARAM)
@@ -232,23 +239,26 @@ object UctAkkaActorBenchmark {
 
     override def process(theMsg: Msg) {
       theMsg match {
-        case _: UctConfig.TryGenerateChildrenMessage =>
+        case ParentRootMessage(parent, root) =>
+          myParent = parent
+          myRoot = root
+        case TryGenerateChildrenMessage =>
           tryGenerateChildren()
-        case childrenMessage: UctConfig.GenerateChildrenMessage =>
+        case childrenMessage: GenerateChildrenMessage =>
           generateChildren(childrenMessage.currentId, childrenMessage.compSize)
-        case childrenMessage: UctConfig.UrgentGenerateChildrenMessage =>
+        case childrenMessage: UrgentGenerateChildrenMessage =>
           generateUrgentChildren(childrenMessage.urgentChildId, childrenMessage.currentId, childrenMessage.compSize)
-        case grantMessage: UctConfig.UpdateGrantMessage =>
+        case grantMessage: UpdateGrantMessage =>
           updateGrant(grantMessage.childId)
-        case _: UctConfig.TraverseMessage =>
+        case TraverseMessage =>
           traverse()
-        case _: UctConfig.UrgentTraverseMessage =>
+        case UrgentTraverseMessage =>
           urgentTraverse()
-        case _: UctConfig.PrintInfoMessage =>
+        case PrintInfoMessage =>
           printInfo()
-        case _: UctConfig.GetIdMessage =>
+        case GetIdMessage =>
           getId
-        case _: UctConfig.TerminateMessage =>
+        case TerminateMessage =>
           terminateMe()
         case _ =>
       }
@@ -260,19 +270,22 @@ object UctAkkaActorBenchmark {
      */
     def tryGenerateChildren() {
       UctConfig.loop(100, NodeActor.dummy)
-      myRoot ! new UctConfig.ShouldGenerateChildrenMessage(self, myHeight)
+      myRoot ! new ShouldGenerateChildrenMessage(ctx.self, myHeight)
     }
 
     def generateChildren(currentId: Int, compSize: Int) {
       val myArrayId: Int = myId % UctConfig.BINOMIAL_PARAM
-      myParent ! new UctConfig.UpdateGrantMessage(myArrayId)
+      myParent ! new UpdateGrantMessage(myArrayId)
       val childrenHeight: Int = myHeight + 1
       val idValue: Int = currentId
 
       var i: Int = 0
       while (i < UctConfig.BINOMIAL_PARAM) {
 
-        children(i) = NodeActor.createNodeActor(context.system, self, myRoot, childrenHeight, idValue + i, compSize, urgent = false)
+        children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
+          new NodeActor(childrenHeight, idValue + i, compSize, urgent = false, ctx)
+        })
+        children(i) ! ParentRootMessage(ctx.self, myRoot)
         i += 1
       }
 
@@ -288,7 +301,7 @@ object UctAkkaActorBenchmark {
 
     def generateUrgentChildren(urgentChildId: Int, currentId: Int, compSize: Int) {
       val myArrayId: Int = myId % UctConfig.BINOMIAL_PARAM
-      myParent ! new UctConfig.UpdateGrantMessage(myArrayId)
+      myParent ! new UpdateGrantMessage(myArrayId)
       val childrenHeight: Int = myHeight + 1
       val idValue: Int = currentId
       urgentChild = urgentChildId
@@ -296,7 +309,10 @@ object UctAkkaActorBenchmark {
       var i: Int = 0
       while (i < UctConfig.BINOMIAL_PARAM) {
 
-        children(i) = NodeActor.createNodeActor(context.system, self, myRoot, childrenHeight, idValue + i, compSize, i == urgentChild)
+        children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
+          new NodeActor(childrenHeight, idValue + i, compSize, i == urgentChild, ctx)
+        })
+        children(i) ! ParentRootMessage(ctx.self, myRoot)
         i += 1
       }
 
@@ -359,7 +375,7 @@ object UctAkkaActorBenchmark {
           }
         }
       }
-      if (isUrgent) {
+      if (urgent) {
         System.out.println("urgent traverse node " + myId + " " + System.currentTimeMillis)
       } else {
         System.out.println(myId + " " + System.currentTimeMillis)
@@ -367,7 +383,7 @@ object UctAkkaActorBenchmark {
     }
 
     def printInfo() {
-      if (isUrgent) {
+      if (urgent) {
         System.out.print("Urgent......")
       }
       if (hasChildren) {
