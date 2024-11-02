@@ -32,8 +32,7 @@ object UctAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("UCT")
 
       val rootActor = system.actorOf(Props(new RootActor()))
-      AkkaActorState.startActor(rootActor)
-      rootActor ! GenerateTreeMessage
+0      rootActor ! GenerateTreeMessage
 
       AkkaActorState.awaitTermination(system)
     }
@@ -218,7 +217,6 @@ object UctAkkaActorBenchmark {
   protected object NodeActor {
     def createNodeActor(system: ActorSystem, parent: ActorRef[Msg], root: ActorRef[Msg], height: Int, id: Int, comp: Int, urgent: Boolean): ActorRef[Msg] = {
       val nodeActor = system.actorOf(Props(new NodeActor(parent, root, height, id, comp, urgent)))
-      AkkaActorState.startActor(nodeActor)
       nodeActor
     }
 

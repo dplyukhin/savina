@@ -32,7 +32,6 @@ object BankingAkkaManualStashActorBenchmark {
       val system = AkkaActorState.newActorSystem("Banking")
 
       val master = system.actorOf(Props(new Teller(BankingConfig.A, BankingConfig.N)))
-      AkkaActorState.startActor(master)
       master ! StartMessage
 
       AkkaActorState.awaitTermination(system)
@@ -66,7 +65,6 @@ object BankingAkkaManualStashActorBenchmark {
 
 
     protected override def onPostStart() {
-      accounts.foreach(loopAccount => AkkaActorState.startActor(loopAccount))
     }
 
     override def process(theMsg: Msg) {

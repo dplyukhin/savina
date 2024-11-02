@@ -31,16 +31,12 @@ object BitonicSortAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("BitonicSort")
 
       val validationActor = system.actorOf(Props(new ValidationActor(BitonicSortConfig.N)))
-      AkkaActorState.startActor(validationActor)
 
       val adapterActor = system.actorOf(Props(new DataValueAdapterActor(validationActor)))
-      AkkaActorState.startActor(adapterActor)
 
       val kernelActor = system.actorOf(Props(new BitonicSortKernelActor(BitonicSortConfig.N, true, adapterActor)))
-      AkkaActorState.startActor(kernelActor)
 
       val sourceActor = system.actorOf(Props(new IntSourceActor(BitonicSortConfig.N, BitonicSortConfig.M, BitonicSortConfig.S, kernelActor)))
-      AkkaActorState.startActor(sourceActor)
 
       sourceActor ! StartMessage()
 
@@ -62,11 +58,12 @@ object BitonicSortAkkaActorBenchmark {
   private case class ExitMessage() extends Msg with NoRefs
 
 
-  private class ValueDataAdapterActor(orderId: Int, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+  private class ValueDataAdapterActor(orderId: Int, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
-
+    var nextActor: ActorRef[Msg] = _
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.nextActor = x
         case vm: ValueMessage =>
 
           nextActor ! new DataMessage(orderId, vm.value)
@@ -83,9 +80,11 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class DataValueAdapterActor(nextActor: ActorRef, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class DataValueAdapterActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    var nextActor: ActorRef[Msg] = _
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.nextActor = x
         case vm: ValueMessage =>
 
           nextActor ! vm
@@ -102,15 +101,18 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class RoundRobinSplitterActor(name: String, length: Int, receivers: Array[ActorRef[Msg]],
+  private class RoundRobinSplitterActor(name: String, length: Int,
                                         ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
 
     private var receiverIndex = 0
     private var currentRun = 0
+    private var receivers: Array[ActorRef[Msg]] = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfsmsg(x) =>
+          this.receivers = x
         case vm: ValueMessage =>
 
           receivers(receiverIndex) ! vm
@@ -128,7 +130,7 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class RoundRobinJoinerActor(name: String, length: Int, numJoiners: Int, nextActor: ActorRef[Msg],
+  private class RoundRobinJoinerActor(name: String, length: Int, numJoiners: Int,
                                       ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val receivedData = Array.tabulate[ListBuffer[DataMessage]](numJoiners)(i => new ListBuffer[DataMessage]())
@@ -137,9 +139,12 @@ object BitonicSortAkkaActorBenchmark {
     private var currentRun = 0
 
     private var exitsReceived = 0
+    private var nextActor: ActorRef[Msg] = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
         case dm: DataMessage =>
 
           receivedData(dm.orderId).append(dm)
@@ -174,14 +179,16 @@ object BitonicSortAkkaActorBenchmark {
    *
    * sortDirection determines if the sort is nondecreasing (UP) [true] or nonincreasing (DOWN) [false].
    */
-  private class CompareExchangeActor(orderId: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+  private class CompareExchangeActor(orderId: Int, sortDirection: Boolean, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
-
+    private var nextActor: ActorRef[Msg] = _
     private var k1: Long = 0
     private var valueAvailable = false
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
         case vm: ValueMessage =>
 
           if (!valueAvailable) {
@@ -220,34 +227,36 @@ object BitonicSortAkkaActorBenchmark {
    *
    * Graphically, it is a bunch of CompareExchanges with same sortdir, clustered together in the sort network at a particular step (of some merge stage).
    */
-  private class PartitionBitonicSequenceActor(orderId: Int, length: Int, sortDir: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+  private class PartitionBitonicSequenceActor(orderId: Int, length: Int, sortDir: Boolean, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
-
+    private var nextActor: ActorRef[Msg] = _
     val halfLength = length / 2
-    val forwardActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new ValueDataAdapterActor(orderId, nextActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-    val joinerActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("Partition-" + orderId, 1, halfLength, forwardActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-    val workerActors = Array.tabulate[ActorRef](halfLength)(i => {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, sortDir, joinerActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    })
-    val splitterActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("Partition-" + orderId, 1, workerActors, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
+    var forwardActor: ActorRef[Msg] = _
+    var joinerActor: ActorRef[Msg] = _
+    var splitterActor: ActorRef[Msg] = _
+    var workerActors: Array[ActorRef[Msg]] = _
 
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+          forwardActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new ValueDataAdapterActor(orderId, nextActor, ctx)})
+            actor
+          }
+          joinerActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("Partition-" + orderId, 1, halfLength, forwardActor, ctx)})
+            actor
+          }
+          workerActors = Array.tabulate[ActorRef](halfLength)(i => {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, sortDir, joinerActor, ctx)})
+            actor
+          })
+          splitterActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("Partition-" + orderId, 1, workerActors, ctx)})
+            actor
+          }
         case vm: ValueMessage =>
 
           splitterActor ! vm
@@ -266,47 +275,51 @@ object BitonicSortAkkaActorBenchmark {
    * directionCounter determines which step we are in the current merge stage (which in turn is determined by <L, numSeqPartitions>)
    */
   private class StepOfMergeActor(orderId: Int, length: Int, numSeqPartitions: Int, directionCounter: Int,
-                                 nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+                                 ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
-    val forwardActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new DataValueAdapterActor(nextActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-    val joinerActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("StepOfMerge-" + orderId + ":" + length, length, numSeqPartitions, forwardActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-    val workerActors = Array.tabulate[ActorRef](numSeqPartitions)(i => {
-      // finding out the currentDirection is a bit tricky -
-      // the direction depends only on the subsequence number during the FIRST step.
-      // So to determine the FIRST step subsequence to which this sequence belongs, divide this sequence's number j by directionCounter
-      // (bcoz 'directionCounter' tells how many subsequences of the current step make up one subsequence of the FIRST step).
-      // Then, test if that result is even or odd to determine if currentDirection is UP or DOWN respectively.
-      val currentDirection = (i / directionCounter) % 2 == 0
-
-      // The last step needs special care to avoid split-joins with just one branch.
-      if (length > 2) {
-        val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PartitionBitonicSequenceActor(i, length, currentDirection, joinerActor, ctx)})
-        AkkaActorState.startActor(actor)
-        actor
-      } else {
-        // PartitionBitonicSequence of the last step (L=2) is simply a CompareExchange
-        val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, currentDirection, joinerActor, ctx)})
-        AkkaActorState.startActor(actor)
-        actor
-      }
-    })
-    val splitterActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("StepOfMerge-" + orderId + ":" + length, length, workerActors, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
+    private var nextActor: ActorRef[Msg] = _
+    var forwardActor: ActorRef[Msg] = _
+    var joinerActor: ActorRef[Msg] = _
+    var splitterActor: ActorRef[Msg] = _
+    var workerActors: Array[ActorRef[Msg]] = _
 
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+
+          forwardActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new DataValueAdapterActor(nextActor, ctx)})
+            actor
+          }
+          joinerActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("StepOfMerge-" + orderId + ":" + length, length, numSeqPartitions, forwardActor, ctx)})
+            actor
+          }
+          workerActors = Array.tabulate[ActorRef](numSeqPartitions)(i => {
+            // finding out the currentDirection is a bit tricky -
+            // the direction depends only on the subsequence number during the FIRST step.
+            // So to determine the FIRST step subsequence to which this sequence belongs, divide this sequence's number j by directionCounter
+            // (bcoz 'directionCounter' tells how many subsequences of the current step make up one subsequence of the FIRST step).
+            // Then, test if that result is even or odd to determine if currentDirection is UP or DOWN respectively.
+            val currentDirection = (i / directionCounter) % 2 == 0
+
+            // The last step needs special care to avoid split-joins with just one branch.
+            if (length > 2) {
+              val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PartitionBitonicSequenceActor(i, length, currentDirection, joinerActor, ctx)})
+
+              actor
+            } else {
+              // PartitionBitonicSequence of the last step (L=2) is simply a CompareExchange
+              val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, currentDirection, joinerActor, ctx)})
+              actor
+            }
+          })
+          splitterActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("StepOfMerge-" + orderId + ":" + length, length, workerActors, ctx)})
+            actor
+          }
         case vm: ValueMessage =>
 
           splitterActor ! vm
@@ -325,36 +338,37 @@ object BitonicSortAkkaActorBenchmark {
    * Main difference form StepOfMerge is the direction of sort.
    * It is always in the same direction - sortdir.
    */
-  private class StepOfLastMergeActor(length: Int, numSeqPartitions: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+  private class StepOfLastMergeActor(length: Int, numSeqPartitions: Int, sortDirection: Boolean, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
 
-    val joinerActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("StepOfLastMerge-" + length, length, numSeqPartitions, nextActor, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-    val workerActors = Array.tabulate[ActorRef](numSeqPartitions)(i => {
-      // The last step needs special care to avoid split-joins with just one branch.
-      if (length > 2) {
-        val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PartitionBitonicSequenceActor(i, length, sortDirection, joinerActor, ctx)})
-        AkkaActorState.startActor(actor)
-        actor
-      } else {
-        // PartitionBitonicSequence of the last step (L=2) is simply a CompareExchange
-        val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, sortDirection, joinerActor, ctx)})
-        AkkaActorState.startActor(actor)
-        actor
-      }
-    })
-    val splitterActor = {
-      val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("StepOfLastMerge-" + length, length, workerActors, ctx)})
-      AkkaActorState.startActor(actor)
-      actor
-    }
-
+    var nextActor: ActorRef[Msg] = _
+    var joinerActor: ActorRef[Msg] = _
+    var splitterActor: ActorRef[Msg] = _
+    var workerActors: Array[ActorRef[Msg]] = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+          joinerActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinJoinerActor("StepOfLastMerge-" + length, length, numSeqPartitions, nextActor, ctx)})
+            actor
+          }
+          workerActors = Array.tabulate[ActorRef](numSeqPartitions)(i => {
+            // The last step needs special care to avoid split-joins with just one branch.
+            if (length > 2) {
+              val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PartitionBitonicSequenceActor(i, length, sortDirection, joinerActor, ctx)})
+              actor
+            } else {
+              // PartitionBitonicSequence of the last step (L=2) is simply a CompareExchange
+              val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new CompareExchangeActor(i, sortDirection, joinerActor, ctx)})
+              actor
+            }
+          })
+          splitterActor = {
+            val actor = ctx.spawnAnonymous(Behaviors.setup { ctx => new RoundRobinSplitterActor("StepOfLastMerge-" + length, length, workerActors, ctx)})
+            actor
+          }
         case vm: ValueMessage =>
 
           splitterActor ! vm
@@ -374,34 +388,36 @@ object BitonicSortAkkaActorBenchmark {
    * In short, a MergeStage is N/P Bitonic Sorters of order P each.
    * But, this MergeStage is implemented *iteratively* as logP STEPS.
    */
-  private class MergeStageActor(P: Int, N: Int, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
-
-    val forwardActor = {
-      var loopActor: ActorRef = nextActor
-
-      // for each of the lopP steps (except the last step) of this merge stage
-      var i = P / 2
-      while (i >= 1) {
-
-        // length of each sequence for the current step - goes like P, P/2, ..., 2.
-        val L = P / i
-        // numSeqPartitions is the number of PartitionBitonicSequence-rs in this step
-        val numSeqPartitions = (N / P) * i
-        val directionCounter = i
-
-        val localLoopActor = loopActor
-        val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new StepOfMergeActor(i, L, numSeqPartitions, directionCounter, localLoopActor, ctx)})
-        AkkaActorState.startActor(tempActor)
-        loopActor = tempActor
-
-        i /= 2
-      }
-
-      loopActor
-    }
+  private class MergeStageActor(P: Int, N: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private var nextActor: ActorRef[Msg] = _
+    var forwardActor: ActorRef[Msg] = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+          this.forwardActor = {
+            var loopActor: ActorRef = nextActor
+
+            // for each of the lopP steps (except the last step) of this merge stage
+            var i = P / 2
+            while (i >= 1) {
+
+              // length of each sequence for the current step - goes like P, P/2, ..., 2.
+              val L = P / i
+              // numSeqPartitions is the number of PartitionBitonicSequence-rs in this step
+              val numSeqPartitions = (N / P) * i
+              val directionCounter = i
+
+              val localLoopActor = loopActor
+              val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new StepOfMergeActor(i, L, numSeqPartitions, directionCounter, localLoopActor, ctx)})
+              loopActor = tempActor
+
+              i /= 2
+            }
+
+            loopActor
+          }
         case vm: ValueMessage =>
 
           forwardActor ! vm
@@ -421,33 +437,37 @@ object BitonicSortAkkaActorBenchmark {
    *
    * This is implemented iteratively as logN steps.
    */
-  private class LastMergeStageActor(N: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class LastMergeStageActor(N: Int, sortDirection: Boolean, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private var nextActor: ActorRef[Msg] = _
 
-    val forwardActor = {
-      var loopActor: ActorRef = nextActor
-
-      // for each of the lopN steps (except the last step) of this merge stage
-      var i = N / 2
-      while (i >= 1) {
-
-        // length of each sequence for the current step - goes like N, N/2, ..., 2.
-        val L = N / i
-        // numSeqPartitions is the number of PartitionBitonicSequence-rs in this step
-        val numSeqPartitions = i
-
-        val localLoopActor = loopActor
-        val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new StepOfLastMergeActor(L, numSeqPartitions, sortDirection, localLoopActor, ctx)})
-        AkkaActorState.startActor(tempActor)
-        loopActor = tempActor
-
-        i /= 2
-      }
-
-      loopActor
-    }
+    private var forwardActor = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+          this.forwardActor = {
+              var loopActor: ActorRef[Msg] = nextActor
+
+              // for each of the lopN steps (except the last step) of this merge stage
+              var i = N / 2
+              while (i >= 1) {
+
+                // length of each sequence for the current step - goes like N, N/2, ..., 2.
+                val L = N / i
+                // numSeqPartitions is the number of PartitionBitonicSequence-rs in this step
+                val numSeqPartitions = i
+
+                val localLoopActor = loopActor
+                val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new StepOfLastMergeActor(L, numSeqPartitions, sortDirection, localLoopActor, ctx)})
+
+                loopActor = tempActor
+
+                i /= 2
+              }
+
+              loopActor
+            }
         case vm: ValueMessage =>
 
           forwardActor ! vm
@@ -465,34 +485,35 @@ object BitonicSortAkkaActorBenchmark {
    * It has logN merge stages and all merge stages except the last progressively builds a bitonic sequence out of the input sequence.
    * The last merge stage acts on the resultant bitonic sequence to produce the final sorted sequence (sortdir determines if it is UP or DOWN).
    */
-  private class BitonicSortKernelActor(N: Int, sortDirection: Boolean, nextActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
-
-    val forwardActor = {
-      var loopActor: ActorRef = nextActor
-
-      {
-        val localLoopActor = loopActor
-        val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new LastMergeStageActor(N, sortDirection, localLoopActor, ctx)})
-        AkkaActorState.startActor(tempActor)
-        loopActor = tempActor
-      }
-
-      var i = N / 2
-      while (i >= 2) {
-
-        val localLoopActor = loopActor
-        val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new MergeStageActor(i, N, localLoopActor, ctx)})
-        AkkaActorState.startActor(tempActor)
-        loopActor = tempActor
-
-        i /= 2
-      }
-
-      loopActor
-    }
+  private class BitonicSortKernelActor(N: Int, sortDirection: Boolean, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    private var nextActor: ActorRef[Msg] = _
+    private var forwardActor = _
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
+          this.forwardActor = {
+            var loopActor: ActorRef[Msg] = nextActor
+
+            {
+              val localLoopActor = loopActor
+              val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new LastMergeStageActor(N, sortDirection, localLoopActor, ctx)})
+              loopActor = tempActor
+            }
+
+            var i = N / 2
+            while (i >= 2) {
+
+              val localLoopActor = loopActor
+              val tempActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new MergeStageActor(i, N, localLoopActor, ctx)})
+              loopActor = tempActor
+
+              i /= 2
+            }
+
+            loopActor
+          }
         case vm: ValueMessage =>
 
           forwardActor ! vm
@@ -505,15 +526,18 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class IntSourceActor(numValues: Int, maxValue: Long, seed: Long, nextActor: ActorRef[Msg], ctx: ActorContext[Msg])
+  private class IntSourceActor(numValues: Int, maxValue: Long, seed: Long, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
 
+    private var nextActor: ActorRef[Msg] = _
     private val random = new PseudoRandom(seed)
     private val sb = new StringBuilder()
 
     override def process(msg: Msg) {
 
       msg match {
+        case Rfmsg(x) =>
+          this.nextActor = x
         case nm: StartMessage =>
 
           var i = 0

@@ -74,9 +74,9 @@ object BigAkkaActorBenchmark {
     def process(msg: Msg): Unit = ()
   }
 
-  private class BigActor(id: Int, numMessages: Int, sinkActor: ActorRef[Msg], latch: CountDownLatch, ctx: ActorContext[Msg])
+  private class BigActor(id: Int, numMessages: Int, latch: CountDownLatch, ctx: ActorContext[Msg])
     extends GCActor[Msg](ctx) {
-
+    var sinkActor: ActorRef[Msg] = _
     private var numPings = 0
     private var expPinger = -1
     private val random = new PseudoRandom(id)
@@ -87,6 +87,7 @@ object BigAkkaActorBenchmark {
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.sinkActor = x
         case pm: PingMessage =>
 
           val sender = neighbors(pm.sender)

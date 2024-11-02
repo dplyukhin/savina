@@ -38,8 +38,6 @@ object ProdConsAkkaActorBenchmark {
           ProdConsBoundedBufferConfig.numItemsPerProducer)),
         name = "manager")
 
-      AkkaActorState.startActor(manager)
-
       AkkaActorState.awaitTermination(system)
     }
 
@@ -77,11 +75,6 @@ object ProdConsAkkaActorBenchmark {
       override def onPostStart() {
         consumers.foreach(loopConsumer => {
           availableConsumers.append(loopConsumer)
-          AkkaActorState.startActor(loopConsumer)
-        })
-
-        producers.foreach(loopProducer => {
-          AkkaActorState.startActor(loopProducer)
         })
 
         producers.foreach(loopProducer => {

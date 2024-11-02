@@ -30,10 +30,8 @@ object SieveAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("Sieve")
 
       val producerActor = system.actorOf(Props(new NumberProducerActor(SieveConfig.N)))
-      AkkaActorState.startActor(producerActor)
 
       val filterActor = system.actorOf(Props(new PrimeFilterActor(1, 2, SieveConfig.M)))
-      AkkaActorState.startActor(filterActor)
 
       producerActor ! RefMsg(filterActor)
 
@@ -85,7 +83,6 @@ object SieveAkkaActorBenchmark {
       } else {
         // Create a new actor to store the new prime
         nextFilterActor = ctx.spawnAnonymous(Behaviors.setup { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, ctx)})
-        AkkaActorState.startActor(nextFilterActor)
       }
     }
 

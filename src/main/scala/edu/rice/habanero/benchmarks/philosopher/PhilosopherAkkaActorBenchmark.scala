@@ -35,11 +35,9 @@ object PhilosopherAkkaActorBenchmark {
 
 
       val arbitrator = system.actorOf(Props(new ArbitratorActor(PhilosopherConfig.N)))
-      AkkaActorState.startActor(arbitrator)
 
       val philosophers = Array.tabulate[ActorRef](PhilosopherConfig.N)(i => {
         val loopActor = system.actorOf(Props(new PhilosopherActor(i, PhilosopherConfig.M, counter, arbitrator)))
-        AkkaActorState.startActor(loopActor)
         loopActor
       })
 

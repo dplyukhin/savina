@@ -33,7 +33,6 @@ object LogisticMapAkkaManualStashActorBenchmark {
       val system = AkkaActorState.newActorSystem("LogisticMap")
 
       val master = system.actorOf(Props(new Master()))
-      AkkaActorState.startActor(master)
       master ! StartMessage
 
       AkkaActorState.awaitTermination(system)
@@ -74,12 +73,6 @@ object LogisticMapAkkaManualStashActorBenchmark {
     private var termsSum: Double = 0
 
     protected override def onPostStart() {
-      computers.foreach(loopComputer => {
-        AkkaActorState.startActor(loopComputer)
-      })
-      workers.foreach(loopWorker => {
-        AkkaActorState.startActor(loopWorker)
-      })
     }
 
     override def process(theMsg: Msg) {

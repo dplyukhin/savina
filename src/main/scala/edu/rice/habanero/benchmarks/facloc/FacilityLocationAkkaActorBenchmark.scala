@@ -39,10 +39,8 @@ object FacilityLocationAkkaActorBenchmark {
       val rootQuadrant = system.actorOf(Props(new QuadrantActor(
         null, Position.ROOT, boundingBox, threshold, 0,
         new java.util.ArrayList[Point](), 1, -1, new java.util.ArrayList[Point]())))
-      AkkaActorState.startActor(rootQuadrant)
 
       val producer = system.actorOf(Props(new ProducerActor(rootQuadrant)))
-      AkkaActorState.startActor(producer)
 
       AkkaActorState.awaitTermination(system)
     }
@@ -285,25 +283,21 @@ object FacilityLocationAkkaActorBenchmark {
       val firstChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.TOP_LEFT, firstBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers1, ctx)})
-      AkkaActorState.startActor(firstChild)
 
       val customers2 = new util.ArrayList[Point](supportCustomers)
       val secondChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.TOP_RIGHT, secondBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers2, ctx)})
-      AkkaActorState.startActor(secondChild)
 
       val customers3 = new util.ArrayList[Point](supportCustomers)
       val thirdChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.BOT_LEFT, thirdBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers3, ctx)})
-      AkkaActorState.startActor(thirdChild)
 
       val customers4 = new util.ArrayList[Point](supportCustomers)
       val fourthChild = ctx.spawnAnonymous(Behaviors.setup { ctx => new QuadrantActor(
         self, Position.BOT_RIGHT, fourthBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers4, ctx)})
-      AkkaActorState.startActor(fourthChild)
 
 
       children = List[ActorRef[Msg]](firstChild, secondChild, thirdChild, fourthChild)

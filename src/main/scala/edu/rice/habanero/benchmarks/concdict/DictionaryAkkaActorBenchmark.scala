@@ -34,7 +34,6 @@ object DictionaryAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("Dictionary")
 
       val master = system.actorOf(Props(new Master(numWorkers, numMessagesPerWorker)))
-      AkkaActorState.startActor(master)
 
       AkkaActorState.awaitTermination(system)
     }
@@ -67,12 +66,11 @@ object DictionaryAkkaActorBenchmark {
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
-      AkkaActorState.startActor(dictionary)
 
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, dictionary, i, numMessagesPerWorker, ctx)})
-        AkkaActorState.startActor(workers(i))
+
         workers(i) ! DoWorkMessage
         i += 1
       }

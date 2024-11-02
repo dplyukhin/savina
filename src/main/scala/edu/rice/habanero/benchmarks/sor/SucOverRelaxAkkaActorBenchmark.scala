@@ -33,7 +33,6 @@ object SucOverRelaxAkkaActorBenchmark {
 
       val dataLevel = SucOverRelaxConfig.N
       val sorRunner = system.actorOf(Props(new SorRunner(dataLevel)))
-      AkkaActorState.startActor(sorRunner)
       sorRunner ! SorBootMessage
 
       println("pre-AkkaActorState.awaitTermination")
@@ -82,7 +81,6 @@ object SucOverRelaxAkkaActorBenchmark {
           val pos = i * (part + 1) + j
           c = 1 - c
           sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup { ctx => new SorActor(pos, randoms(i)(j), c, s, part + 1, SucOverRelaxConfig.OMEGA, self, false, ctx)})
-          AkkaActorState.startActor(sorActors(pos))
           if (j == (part - 1)) {
             myBorder(i) = sorActors(pos)
           }
@@ -97,7 +95,6 @@ object SucOverRelaxAkkaActorBenchmark {
       }
 
       val sorPeer = ctx.spawnAnonymous(Behaviors.setup { ctx => new SorPeer(s, part, partialMatrix, SorBorder(myBorder), self, ctx)})
-      AkkaActorState.startActor(sorPeer)
       sorPeer ! SorBootMessage
     }
 
@@ -270,7 +267,6 @@ object SucOverRelaxAkkaActorBenchmark {
           c = 1 - c
           sorActors(pos) = ctx.spawnAnonymous(Behaviors.setup { ctx =>
             new SorActor(pos, matrixPart(i)(j - 1), c, s, s - partStart + 1, SucOverRelaxConfig.OMEGA, self, true, ctx)})
-          AkkaActorState.startActor(sorActors(pos))
 
           if (j == 1) {
             myBorder(i) = sorActors(pos)

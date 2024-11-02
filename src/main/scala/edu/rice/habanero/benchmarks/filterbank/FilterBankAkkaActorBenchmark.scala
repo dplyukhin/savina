@@ -48,10 +48,6 @@ object FilterBankAkkaActorBenchmark {
       val branches = system.actorOf(Props(new BranchesActor(numChannels, numColumns, H, F, integrator)))
       val source = system.actorOf(Props(new SourceActor(producer, branches)))
 
-      // start the actors
-      AkkaActorState.startActor(producer)
-      AkkaActorState.startActor(source)
-
       // start the pipeline
       producer ! new NextMessage(source)
 
@@ -100,7 +96,6 @@ object FilterBankAkkaActorBenchmark {
   private abstract class FilterBankActor(nextActor: ActorRef[Msg]) extends AkkaActor[Msg] {
 
     protected override def onPostStart() {
-      AkkaActorState.startActor(nextActor)
     }
 
     protected override def onPostExit() {
@@ -156,9 +151,6 @@ object FilterBankAkkaActorBenchmark {
     })
 
     protected override def onPostStart() {
-      for (loopBank <- banks) {
-        AkkaActorState.startActor(loopBank)
-      }
     }
 
     protected override def onPostExit() {
@@ -192,7 +184,6 @@ object FilterBankAkkaActorBenchmark {
               ctx.spawnAnonymous(Behaviors.setup { ctx => new TaggedForwardActor(sourceId, integrator))))))))))))))))))
 
     protected override def onPostStart() {
-      AkkaActorState.startActor(firstActor)
     }
 
     protected override def onPostExit() {

@@ -33,7 +33,6 @@ object TrapezoidalAkkaActorBenchmark {
       val precision: Double = (TrapezoidalConfig.R - TrapezoidalConfig.L) / TrapezoidalConfig.N
 
       val master = system.actorOf(Props(new Master(numWorkers)))
-      AkkaActorState.startActor(master)
       master ! new WorkMessage(TrapezoidalConfig.L, TrapezoidalConfig.R, precision)
 
       AkkaActorState.awaitTermination(system)
@@ -56,9 +55,6 @@ object TrapezoidalAkkaActorBenchmark {
     private var resultArea: Double = 0.0
 
     override def onPostStart() {
-      workers.foreach(loopWorker => {
-        AkkaActorState.startActor(loopWorker)
-      })
     }
 
     override def process(msg: Msg) {

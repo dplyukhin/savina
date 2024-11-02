@@ -31,7 +31,6 @@ object SortedListAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("SortedList")
 
       val master = system.actorOf(Props(new Master(numWorkers, numMessagesPerWorker)))
-      AkkaActorState.startActor(master)
 
       AkkaActorState.awaitTermination(system)
     }
@@ -65,12 +64,10 @@ object SortedListAkkaActorBenchmark {
     private var numWorkersTerminated: Int = 0
 
     override def onPostStart() {
-      AkkaActorState.startActor(sortedList)
 
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup { ctx => new Worker(self, sortedList, i, numMessagesPerWorker, ctx)})
-        AkkaActorState.startActor(workers(i))
         workers(i) ! DoWorkMessage
         i += 1
       }

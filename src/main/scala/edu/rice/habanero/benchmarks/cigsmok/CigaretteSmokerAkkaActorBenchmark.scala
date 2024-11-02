@@ -31,7 +31,6 @@ object CigaretteSmokerAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("CigaretteSmoker")
 
       val arbiterActor = system.actorOf(Props(new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S)))
-      AkkaActorState.startActor(arbiterActor)
 
       arbiterActor ! StartMessage
 
@@ -59,9 +58,6 @@ object CigaretteSmokerAkkaActorBenchmark {
     private var roundsSoFar = 0
 
     override def onPostStart() {
-      smokerActors.foreach(loopActor => {
-        AkkaActorState.startActor(loopActor)
-      })
     }
 
     override def process(msg: Msg) {

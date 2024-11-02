@@ -35,7 +35,6 @@ object PiPrecisionAkkaActorBenchmark {
       val system = AkkaActorState.newActorSystem("PiPrecision")
 
       val master = system.actorOf(Props(new Master(numWorkers, precision)))
-      AkkaActorState.startActor(master)
 
       master ! StartMessage
 
@@ -65,9 +64,6 @@ object PiPrecisionAkkaActorBenchmark {
     private var stopRequests: Boolean = false
 
     override def onPostStart() {
-      workers.foreach(loopWorker => {
-        AkkaActorState.startActor(loopWorker)
-      })
     }
 
     /**
@@ -123,10 +119,11 @@ object PiPrecisionAkkaActorBenchmark {
     }
   }
 
-  private class Worker(master: ActorRef[Msg], id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
-
+  private class Worker(id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    var master: ActorRef[Msg] = _
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(master) => this.master = master
         case _: PiPrecisionConfig.StopMessage =>
           master ! new PiPrecisionConfig.StopMessage
           exit()

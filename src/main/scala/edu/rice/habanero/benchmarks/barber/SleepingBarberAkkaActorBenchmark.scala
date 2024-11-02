@@ -40,9 +40,6 @@ object SleepingBarberAkkaActorBenchmark {
       val room = system.actorOf(Props(new WaitingRoomActor(SleepingBarberConfig.W, barber)))
       val factoryActor = system.actorOf(Props(new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room)))
 
-      AkkaActorState.startActor(barber)
-      AkkaActorState.startActor(room)
-      AkkaActorState.startActor(factoryActor)
 
       factoryActor ! Start
 
@@ -188,7 +185,6 @@ object SleepingBarberAkkaActorBenchmark {
     private def sendCustomerToRoom() {
       val customer = ctx.spawnAnonymous(Behaviors.setup { ctx => new CustomerActor(idGenerator.incrementAndGet(),
         self, ctx) })
-      AkkaActorState.startActor(customer)
 
       sendCustomerToRoom(customer)
     }
@@ -199,10 +195,11 @@ object SleepingBarberAkkaActorBenchmark {
     }
   }
 
-  private class CustomerActor(val id: Long, factoryActor: ActorRef[Msg], ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
-
+  private class CustomerActor(val id: Long, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+    var factoryActor: ActorRef[Msg] = _
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) => this.factoryActor = x
         case Full =>
 
           // println("Customer-" + id + " The waiting room is full. I am leaving.")
