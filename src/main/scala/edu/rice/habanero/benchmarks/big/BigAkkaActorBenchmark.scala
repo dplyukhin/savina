@@ -57,7 +57,7 @@ object BigAkkaActorBenchmark {
 
       val bigActors = Array.tabulate[ActorRef[Msg]](BigConfig.W)(i => {
         val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg](ctx => new BigActor(i, BigConfig.N, latch, ctx)))
-        loopActor ! Rfmsg(sinkActor)
+        loopActor ! Rfmsg(ctx.createRef(sinkActor, loopActor))
         loopActor
       })
 

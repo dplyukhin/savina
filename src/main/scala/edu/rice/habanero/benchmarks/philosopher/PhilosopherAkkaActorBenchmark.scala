@@ -65,7 +65,7 @@ object PhilosopherAkkaActorBenchmark {
       val arbitrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ArbitratorActor(PhilosopherConfig.N, ctx) })
       val philosophers = Array.tabulate[ActorRef[Msg]](PhilosopherConfig.N)(i => {
         val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PhilosopherActor(i, PhilosopherConfig.M, counter, ctx) })
-        loopActor ! Rfmsg(arbitrator)
+        loopActor ! Rfmsg(ctx.createRef(arbitrator, loopActor))
         loopActor
       })
       philosophers.foreach(loopActor => {
@@ -81,7 +81,6 @@ object PhilosopherAkkaActorBenchmark {
     private var localCounter = 0L
     private var roundsSoFar = 0
 
-    private val myHungryMessage = HungryMessage(ctx.self, id)
     private val myDoneMessage = DoneMessage(id)
 
     override def process(msg: Msg) {
@@ -91,7 +90,7 @@ object PhilosopherAkkaActorBenchmark {
         case dm: DeniedMessage =>
 
           localCounter += 1
-          arbitrator ! myHungryMessage
+          arbitrator ! HungryMessage(ctx.createRef(ctx.self, arbitrator), id)
 
         case em: EatMessage =>
 
@@ -108,7 +107,7 @@ object PhilosopherAkkaActorBenchmark {
 
         case sm: StartMessage =>
 
-          arbitrator ! myHungryMessage
+          arbitrator ! HungryMessage(ctx.createRef(ctx.self, arbitrator), id)
 
       }
     }

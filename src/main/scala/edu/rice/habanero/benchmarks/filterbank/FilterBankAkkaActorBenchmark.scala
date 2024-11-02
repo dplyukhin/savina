@@ -72,16 +72,16 @@ object FilterBankAkkaActorBenchmark {
       val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(numSimulations, ctx) })
       val sink = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SinkActor(sinkPrintRate, ctx) })
       val combine = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CombineActor(ctx) })
-      combine ! Rfmsg(sink)
+      combine ! Rfmsg(ctx.createRef(sink, combine))
       val integrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new IntegratorActor(numChannels, ctx) })
-      integrator ! Rfmsg(combine)
+      integrator ! Rfmsg(ctx.createRef(combine, integrator))
       val branches = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BranchesActor(numChannels, numColumns, H, F, ctx) })
-      branches ! Rfmsg(integrator)
+      branches ! Rfmsg(ctx.createRef(integrator, branches))
       val source = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SourceActor(ctx) })
-      source ! ProducerNextActorMsg(producer, branches)
+      source ! ProducerNextActorMsg(ctx.createRef(producer, source), ctx.createRef(branches, source))
 
       // start the pipeline
-      producer ! new NextMessage(source)
+      producer ! new NextMessage(ctx.createRef(source, producer))
     }
     override def process(msg: Msg): Unit = ()
   }
@@ -124,7 +124,7 @@ object FilterBankAkkaActorBenchmark {
         case BootMessage =>
           nextActor ! new ValueMessage(current)
           current = (current + 1) % maxValue
-          producer ! new NextMessage(ctx.self)
+          producer ! new NextMessage(ctx.createRef(ctx.self, producer))
         case ExitMessage =>
           exit()
         case message =>
@@ -176,7 +176,7 @@ object FilterBankAkkaActorBenchmark {
           nextActor = x
           banks = Array.tabulate[ActorRef[Msg]](numChannels)(i => {
             val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BankActor(i, numColumns, H(i), F(i), ctx)})
-            actor ! Rfmsg(nextActor)
+            actor ! Rfmsg(ctx.createRef(nextActor, actor))
             actor
           })
         case _: ValueMessage =>
@@ -208,15 +208,15 @@ object FilterBankAkkaActorBenchmark {
 
           firstActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DelayActor(sourceId + ".1", numColumns - 1, ctx)})
           val secondActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new FirFilterActor(sourceId + ".1", numColumns, H, ctx)})
-          firstActor ! Rfmsg(secondActor)
+          firstActor ! Rfmsg(ctx.createRef(secondActor, firstActor))
           val thirdActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SampleFilterActor(numColumns, ctx)})
-          secondActor ! Rfmsg(thirdActor)
+          secondActor ! Rfmsg(ctx.createRef(thirdActor, secondActor))
           val fourthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DelayActor(sourceId + ".2", numColumns - 1, ctx)})
-          thirdActor ! Rfmsg(fourthActor)
+          thirdActor ! Rfmsg(ctx.createRef(fourthActor, thirdActor))
           val fifthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new FirFilterActor(sourceId + ".2", numColumns, F, ctx)})
-          fourthActor ! Rfmsg(fifthActor)
+          fourthActor ! Rfmsg(ctx.createRef(fifthActor, fourthActor))
           val sixthActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new TaggedForwardActor(sourceId, ctx)})
-          sixthActor ! Rfmsg(integrator)
+          sixthActor ! Rfmsg(ctx.createRef(integrator, sixthActor))
         case _: ValueMessage =>
           firstActor ! theMsg
         case ExitMessage =>

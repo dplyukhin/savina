@@ -108,7 +108,10 @@ object SleepingBarberAkkaActorBenchmark {
           if (waitingCustomers.nonEmpty) {
 
             val customer = waitingCustomers.remove(0)
-            barber ! new Enter(customer, ctx.self)
+            barber ! new Enter(
+              ctx.createRef(customer, barber),
+              ctx.createRef(ctx.self, barber)
+            )
 
           } else {
 
@@ -190,14 +193,16 @@ object SleepingBarberAkkaActorBenchmark {
 
     private def sendCustomerToRoom() {
       val customer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerActor(idGenerator.incrementAndGet(), ctx) })
-      customer ! Rfmsg(ctx.self)
+      customer ! Rfmsg(ctx.createRef(ctx.self, customer))
 
       sendCustomerToRoom(customer)
     }
 
     private def sendCustomerToRoom(customer: ActorRef[Msg]) {
-      val enterMessage = new Enter(customer, room)
-      room ! enterMessage
+      room ! Enter(
+        ctx.createRef(customer, room),
+        ctx.createRef(room, room)
+      )
     }
   }
 
@@ -209,7 +214,7 @@ object SleepingBarberAkkaActorBenchmark {
         case Full =>
 
           // println("Customer-" + id + " The waiting room is full. I am leaving.")
-          factoryActor ! new Returned(ctx.self)
+          factoryActor ! new Returned(ctx.createRef(ctx.self, factoryActor))
 
         case Wait =>
 

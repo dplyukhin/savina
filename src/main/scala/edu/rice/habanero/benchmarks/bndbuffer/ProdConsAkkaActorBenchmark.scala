@@ -73,12 +73,12 @@ object ProdConsAkkaActorBenchmark {
 
       private val producers = Array.tabulate[ActorRef[Msg]](numProducers)(i => {
         val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(i, numItemsPerProducer, ctx)})
-        actor ! Rfmsg(ctx.self)
+        actor ! Rfmsg(ctx.createRef(ctx.self, actor))
         actor
       })
       private val consumers = Array.tabulate[ActorRef[Msg]](numConsumers)(i => {
         val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ConsumerActor(i, ctx)})
-        actor ! Rfmsg(ctx.self)
+        actor ! Rfmsg(ctx.createRef(ctx.self, actor))
         actor
       }
       )
@@ -146,7 +146,7 @@ object ProdConsAkkaActorBenchmark {
 
       private def produceData() {
         prodItem = processItem(prodItem, prodCost)
-        manager ! new DataItemMessage(prodItem, ctx.self)
+        manager ! new DataItemMessage(prodItem, ctx.createRef(ctx.self, manager))
         itemsProduced += 1
       }
 
@@ -171,7 +171,6 @@ object ProdConsAkkaActorBenchmark {
     private class ConsumerActor(id: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
       private var manager: ActorRef[Msg] = _
-      private val consumerAvailableMessage = new ConsumerAvailableMessage(ctx.self)
       private var consItem: Double = 0
 
       protected def consumeDataItem(dataToConsume: Double) {
@@ -183,7 +182,7 @@ object ProdConsAkkaActorBenchmark {
           case Rfmsg(x) => this.manager = x
           case dm: DataItemMessage =>
             consumeDataItem(dm.data)
-            manager ! consumerAvailableMessage
+            manager ! ConsumerAvailableMessage(ctx.createRef(ctx.self, manager))
           case ConsumerExitMessage =>
             exit()
           case msg =>

@@ -46,9 +46,6 @@ object BankingAkkaManualStashActorBenchmark {
 
 
   trait Msg extends Message
-  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
-    override def refs: Iterable[ActorRef[_]] = Some(actor)
-  }
   case object StartMessage extends Msg with NoRefs
   case object StopMessage extends Msg with NoRefs
   case object ReplyMessage extends Msg with NoRefs
@@ -108,8 +105,7 @@ object BankingAkkaManualStashActorBenchmark {
       val amount = Math.abs(randomGen.nextDouble()) * 1000
 
       val sender = ctx.self
-      val cm = new CreditMessage(sender, amount, destAccount)
-      srcAccount ! cm
+      srcAccount ! CreditMessage(ctx.createRef(sender, srcAccount), amount, ctx.createRef(destAccount, srcAccount))
     }
   }
 
@@ -157,7 +153,7 @@ object BankingAkkaManualStashActorBenchmark {
 
             val sender = ctx.self
             val destAccount = cm.recipient
-            destAccount ! new DebitMessage(sender, cm.amount)
+            destAccount ! new DebitMessage(ctx.createRef(sender, destAccount), cm.amount)
             inReplyMode = true
 
           case StopMessage =>

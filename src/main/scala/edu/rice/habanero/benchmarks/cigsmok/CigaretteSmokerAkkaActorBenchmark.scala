@@ -58,7 +58,7 @@ object CigaretteSmokerAkkaActorBenchmark {
 
     private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i => {
       val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SmokerActor(ctx) })
-      actor ! Rfmsg(ctx.self)
+      actor ! Rfmsg(ctx.createRef(ctx.self, actor))
       actor
     })
     private val random = new PseudoRandom(numRounds * numSmokers)

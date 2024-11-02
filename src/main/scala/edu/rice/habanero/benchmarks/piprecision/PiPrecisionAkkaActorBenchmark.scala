@@ -61,7 +61,7 @@ object PiPrecisionAkkaActorBenchmark {
 
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, ctx) })
-      a ! Rfmsg(ctx.self)
+      a ! Rfmsg(ctx.createRef(ctx.self, a))
       a
     })
     private var result: BigDecimal = BigDecimal.ZERO

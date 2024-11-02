@@ -50,9 +50,6 @@ object DictionaryAkkaActorBenchmark {
   private case class MasterDictMsg(master: ActorRef[Msg], dictionary: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(master, dictionary)
   }
-  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
-    override def refs: Iterable[ActorRef[_]] = Some(actor)
-  }
   private case class WriteMessage(sender: ActorRef[Msg], _key: Int, value: Int) extends Msg {
     val key = Math.abs(_key) % DATA_LIMIT
     override def refs: Iterable[ActorRef[_]] = Some(sender)
@@ -78,7 +75,7 @@ object DictionaryAkkaActorBenchmark {
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})
-        workers(i) ! MasterDictMsg(ctx.self, dictionary)
+        workers(i) ! MasterDictMsg(ctx.createRef(ctx.self, workers(i)), ctx.createRef(dictionary, workers(i)))
         workers(i) ! DoWorkMessage
         i += 1
       }
@@ -117,9 +114,9 @@ object DictionaryAkkaActorBenchmark {
       if (messageCount <= numMessagesPerWorker) {
         val anInt: Int = random.nextInt(100)
         if (anInt < writePercent) {
-          dictionary ! new WriteMessage(ctx.self, random.nextInt, random.nextInt)
+          dictionary ! new WriteMessage(ctx.createRef(ctx.self, dictionary), random.nextInt, random.nextInt)
         } else {
-          dictionary ! new ReadMessage(ctx.self, random.nextInt)
+          dictionary ! new ReadMessage(ctx.createRef(ctx.self, dictionary), random.nextInt)
         }
       } else {
         master ! EndWorkMessage
@@ -139,11 +136,11 @@ object DictionaryAkkaActorBenchmark {
           val value = writeMessage.value
           dataMap.put(key, value)
           val sender = writeMessage.sender
-          sender ! new ResultMessage(ctx.self, value)
+          sender ! new ResultMessage(ctx.createRef(ctx.self, sender), value)
         case readMessage: ReadMessage =>
           val value = dataMap.get(readMessage.key)
           val sender = readMessage.sender
-          sender ! new ResultMessage(ctx.self, value)
+          sender ! new ResultMessage(ctx.createRef(ctx.self, sender), value)
         case EndWorkMessage =>
           printf(BenchmarkRunner.argOutputFormat, "Dictionary Size", dataMap.size)
           exit()

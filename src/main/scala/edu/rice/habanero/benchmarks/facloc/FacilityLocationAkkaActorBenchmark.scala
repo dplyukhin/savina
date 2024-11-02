@@ -67,7 +67,7 @@ object FacilityLocationAkkaActorBenchmark {
         new java.util.ArrayList[Point](), 1, -1, new java.util.ArrayList[Point](), ctx)))
 
       val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(ctx) })
-      producer ! Rfmsg(rootQuadrant)
+      producer ! Rfmsg(ctx.createRef(rootQuadrant, producer))
     }
     override def process(msg: Msg): Unit = ()
   }
@@ -78,7 +78,7 @@ object FacilityLocationAkkaActorBenchmark {
     private var itemsProduced = 0
 
     private def produceCustomer(): Unit = {
-      consumer ! (CustomerMsg(ctx.self, Point.random(FacilityLocationConfig.GRID_SIZE)))
+      consumer ! (CustomerMsg(ctx.createRef(ctx.self, consumer), Point.random(FacilityLocationConfig.GRID_SIZE)))
       itemsProduced += 1
     }
 
@@ -296,25 +296,25 @@ object FacilityLocationAkkaActorBenchmark {
       val firstChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
         Position.TOP_LEFT, firstBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers1, ctx)})
-      firstChild ! Rfmsg(ctx.self)
+      firstChild ! Rfmsg(ctx.createRef(ctx.self, firstChild))
 
       val customers2 = new util.ArrayList[Point](supportCustomers)
       val secondChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
         Position.TOP_RIGHT, secondBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers2, ctx)})
-      secondChild ! Rfmsg(ctx.self)
+      secondChild ! Rfmsg(ctx.createRef(ctx.self, secondChild))
 
       val customers3 = new util.ArrayList[Point](supportCustomers)
       val thirdChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
         Position.BOT_LEFT, thirdBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers3, ctx)})
-      thirdChild ! Rfmsg(ctx.self)
+      thirdChild ! Rfmsg(ctx.createRef(ctx.self, thirdChild))
 
       val customers4 = new util.ArrayList[Point](supportCustomers)
       val fourthChild = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new QuadrantActor(
         Position.BOT_RIGHT, fourthBoundary, threshold, depth + 1,
         localFacilities, knownFacilities, maxDepthOfKnownOpenFacility, customers4, ctx)})
-      fourthChild ! Rfmsg(ctx.self)
+      fourthChild ! Rfmsg(ctx.createRef(ctx.self, fourthChild))
 
       children = List[ActorRef[Msg]](firstChild, secondChild, thirdChild, fourthChild)
       childrenBoundaries = List[Box](firstBoundary, secondBoundary, thirdBoundary, fourthBoundary)

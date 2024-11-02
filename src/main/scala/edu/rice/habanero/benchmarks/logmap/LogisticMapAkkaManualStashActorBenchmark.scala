@@ -71,7 +71,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
       val rateComputer = computers(i % numComputers)
       val startTerm = i * LogisticMapConfig.increment
       val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SeriesWorker(i, startTerm, ctx)})
-      a ! MasterComputerMsg(ctx.self, rateComputer)
+      a ! MasterComputerMsg(ctx.createRef(ctx.self, a), ctx.createRef(rateComputer, a))
       a
     })
 
@@ -164,8 +164,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
           case NextTermMessage =>
 
             val sender = ctx.self
-            val newMessage = new ComputeMessage(sender, curTerm(0))
-            computer ! newMessage
+            computer ! new ComputeMessage(ctx.createRef(sender, computer), curTerm(0))
             inReplyMode = true
 
           case message: GetTermMessage.type =>

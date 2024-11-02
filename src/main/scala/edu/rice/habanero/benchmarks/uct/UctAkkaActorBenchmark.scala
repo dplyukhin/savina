@@ -48,9 +48,6 @@ object UctAkkaActorBenchmark {
   private case class ParentRootMessage(parent: ActorRef[Msg], root: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(parent, root)
   }
-  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
-    override def refs: Iterable[ActorRef[_]] = Some(actor)
-  }
   private case object GetIdMessage extends Msg with NoRefs
   private case object PrintInfoMessage extends Msg with NoRefs
   private case object GenerateTreeMessage extends Msg with NoRefs
@@ -110,7 +107,7 @@ object UctAkkaActorBenchmark {
         children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
           new NodeActor(height, size + i, computationSize, urgent = false, ctx)
         })
-        children(i) ! ParentRootMessage(ctx.self, ctx.self)
+        children(i) ! ParentRootMessage(ctx.createRef(ctx.self, children(i)), ctx.createRef(ctx.self, children(i)))
 
         i += 1
       }
@@ -272,7 +269,7 @@ object UctAkkaActorBenchmark {
      */
     def tryGenerateChildren() {
       UctConfig.loop(100, NodeActor.dummy)
-      myRoot ! new ShouldGenerateChildrenMessage(ctx.self, myHeight)
+      myRoot ! new ShouldGenerateChildrenMessage(ctx.createRef(ctx.self, myRoot), myHeight)
     }
 
     def generateChildren(currentId: Int, compSize: Int) {
@@ -287,7 +284,7 @@ object UctAkkaActorBenchmark {
         children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
           new NodeActor(childrenHeight, idValue + i, compSize, urgent = false, ctx)
         })
-        children(i) ! ParentRootMessage(ctx.self, myRoot)
+        children(i) ! ParentRootMessage(ctx.createRef(ctx.self, children(i)), ctx.createRef(myRoot, children(i)))
         i += 1
       }
 
@@ -314,7 +311,7 @@ object UctAkkaActorBenchmark {
         children(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx =>
           new NodeActor(childrenHeight, idValue + i, compSize, i == urgentChild, ctx)
         })
-        children(i) ! ParentRootMessage(ctx.self, myRoot)
+        children(i) ! ParentRootMessage(ctx.createRef(ctx.self, children(i)), ctx.createRef(myRoot, children(i)))
         i += 1
       }
 

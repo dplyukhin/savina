@@ -47,9 +47,6 @@ object SortedListAkkaActorBenchmark {
   private case class MasterListMsg(master: ActorRef[Msg], sortedList: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(master, sortedList)
   }
-  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
-    override def refs: Iterable[ActorRef[_]] = Some(actor)
-  }
   private case class WriteMessage(sender: ActorRef[Msg], value: Int) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(sender)
   }
@@ -75,7 +72,7 @@ object SortedListAkkaActorBenchmark {
       var i: Int = 0
       while (i < numWorkers) {
         workers(i) = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, numMessagesPerWorker, ctx)})
-        workers(i) ! MasterListMsg(ctx.self, sortedList)
+        workers(i) ! MasterListMsg(ctx.createRef(ctx.self, workers(i)), ctx.createRef(sortedList, workers(i)))
         workers(i) ! DoWorkMessage
         i += 1
       }
@@ -116,11 +113,11 @@ object SortedListAkkaActorBenchmark {
       if (messageCount <= numMessagesPerWorker) {
         val anInt: Int = random.nextInt(100)
         if (anInt < sizePercent) {
-          sortedList ! new SizeMessage(ctx.self)
+          sortedList ! new SizeMessage(ctx.createRef(ctx.self, sortedList))
         } else if (anInt < (sizePercent + writePercent)) {
-          sortedList ! new WriteMessage(ctx.self, random.nextInt)
+          sortedList ! new WriteMessage(ctx.createRef(ctx.self, sortedList), random.nextInt)
         } else {
-          sortedList ! new ContainsMessage(ctx.self, random.nextInt)
+          sortedList ! new ContainsMessage(ctx.createRef(ctx.self, sortedList), random.nextInt)
         }
       } else {
         master ! EndWorkMessage
@@ -139,16 +136,16 @@ object SortedListAkkaActorBenchmark {
           val value: Int = writeMessage.value
           dataList.add(value)
           val sender = writeMessage.sender
-          sender ! new ResultMessage(ctx.self, value)
+          sender ! new ResultMessage(ctx.createRef(ctx.self, sender), value)
         case containsMessage: ContainsMessage =>
           val value: Int = containsMessage.value
           val result: Int = if (dataList.contains(value)) 1 else 0
           val sender = containsMessage.sender
-          sender ! new ResultMessage(ctx.self, result)
+          sender ! new ResultMessage(ctx.createRef(ctx.self, sender), result)
         case readMessage: SizeMessage =>
           val value: Int = dataList.size
           val sender = readMessage.sender
-          sender ! new ResultMessage(ctx.self, value)
+          sender ! new ResultMessage(ctx.createRef(ctx.self, sender), value)
         case EndWorkMessage =>
           printf(BenchmarkRunner.argOutputFormat, "List Size", dataList.size)
           exit()

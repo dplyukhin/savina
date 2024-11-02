@@ -38,9 +38,6 @@ object SieveAkkaActorBenchmark {
   }
 
   trait Msg extends Message
-  private case class Rfmsg(actor: ActorRef[Msg]) extends Msg {
-    override def refs: Iterable[ActorRef[_]] = Some(actor)
-  }
   case class LongBox(value: Long) extends Msg with NoRefs
   case class RefMsg(actorRef: ActorRef[Msg]) extends Msg {
     override def refs: Iterable[ActorRef[_]] = List(actorRef)
@@ -52,7 +49,7 @@ object SieveAkkaActorBenchmark {
     {
       val producerActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new NumberProducerActor(SieveConfig.N, ctx) })
       val filterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(1, 2, SieveConfig.M, ctx) })
-      producerActor ! RefMsg(filterActor)
+      producerActor ! RefMsg(ctx.createRef(filterActor, producerActor))
     }
     override def process(msg: Msg): Unit = ()
   }
