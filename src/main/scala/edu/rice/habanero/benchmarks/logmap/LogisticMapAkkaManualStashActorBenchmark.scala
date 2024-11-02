@@ -2,8 +2,10 @@ package edu.rice.habanero.benchmarks.logmap
 
 import java.util
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.logmap.LogisticMapConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
@@ -38,8 +40,19 @@ object LogisticMapAkkaManualStashActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case object StartMsg extends Msg with NoRefs
+  private case object StopMsg extends Msg with NoRefs
+  private case object NextTermMsg extends Msg with NoRefs
+  private case object GetTermMsg extends Msg with NoRefs
+  private case class ComputeMsg(sender: ActorRef[Msg], term: Double) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(sender)
+  }
+  private case class ResultMsg(term: Double) extends Msg with NoRefs
 
   private class Master extends AkkaActor[AnyRef] {
 

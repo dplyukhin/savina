@@ -3,8 +3,10 @@ package edu.rice.habanero.benchmarks.facloc
 import java.util
 import java.util.function.Consumer
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.facloc.FacilityLocationConfig.{Box, Point, Position}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
@@ -46,21 +48,20 @@ object FacilityLocationAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
 
-  private abstract class Msg()
-
-  private case class FacilityMsg(positionRelativeToParent: Int, depth: Int, point: Point, fromChild: Boolean) extends Msg
-
-  private case class NextCustomerMsg() extends Msg
-
-  private case class CustomerMsg(producer: ActorRef, point: Point) extends Msg
-
-  private case class RequestExitMsg() extends Msg
-
-  private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg
+  private abstract class Msg() extends Message
+  private case class FacilityMsg(positionRelativeToParent: Int, depth: Int, point: Point, fromChild: Boolean) extends
+    Msg with NoRefs
+  private case class NextCustomerMsg() extends Msg with NoRefs
+  private case class CustomerMsg(producer: ActorRef[Msg], point: Point) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(producer)
+  }
+  private case class RequestExitMsg() extends Msg with NoRefs
+  private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg with NoRefs
 
 
   private class ProducerActor(consumer: ActorRef) extends AkkaActor[AnyRef] {

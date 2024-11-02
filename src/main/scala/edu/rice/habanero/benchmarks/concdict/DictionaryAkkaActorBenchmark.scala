@@ -2,9 +2,11 @@ package edu.rice.habanero.benchmarks.concdict
 
 import java.util
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.concdict.DictionaryConfig.{DoWorkMessage, EndWorkMessage, ReadMessage, WriteMessage}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
+import edu.rice.habanero.benchmarks.concdict.DictionaryConfig.DATA_LIMIT
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 /**
@@ -38,8 +40,25 @@ object DictionaryAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case class WriteMessage(sender: ActorRef[Msg], _key: Int, value: Int) extends Msg {
+    val key = Math.abs(_key) % DATA_LIMIT
+    override def refs: Iterable[ActorRef[_]] = Some(sender)
+  }
+  private case class ReadMessage(sender: ActorRef[Msg], _key: Int) extends Msg {
+    val key = Math.abs(_key) % DATA_LIMIT
+    override def refs: Iterable[ActorRef[_]] = Some(sender)
+  }
+  private case class ResultMessage(sender: ActorRef[Msg], key: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(sender)
+  }
+  private case object DoWorkMessage extends Msg with NoRefs
+  private case object EndWorkMessage extends Msg with NoRefs
+
 
   private class Master(numWorkers: Int, numMessagesPerWorker: Int) extends AkkaActor[AnyRef] {
 

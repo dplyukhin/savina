@@ -1,12 +1,13 @@
 package edu.rice.habanero.benchmarks.filterbank
 
 import java.util
-
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors._
-import edu.rice.habanero.benchmarks.filterbank.FilterBankConfig.{BootMessage, ExitMessage, NextMessage}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
+import java.util.Collection
 import scala.collection.JavaConversions._
 
 /**
@@ -57,15 +58,27 @@ object FilterBankAkkaActorBenchmark {
       AkkaActorState.awaitTermination(system)
     }
 
-    def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+    def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double): Unit = {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
-  private class ProducerActor(numSimulations: Int) extends AkkaActor[FilterBankConfig.Message] {
+
+  private trait Msg extends Message
+  private case class NextMessage(source: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(source)
+  }
+  private case object BootMessage extends Msg with NoRefs
+  private case object ExitMessage extends Msg with NoRefs
+  private case class ValueMessage(value: Double) extends Msg with NoRefs
+  private case class SourcedValueMessage(sourceId: Int, value: Double) extends Msg with NoRefs
+  private case class CollectionMessage[T](values: util.Collection[T]) extends Msg with NoRefs
+
+  private class ProducerActor(numSimulations: Int) extends AkkaActor[Msg] {
 
     private var numMessagesSent: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.NextMessage =>
           val source = message.source.asInstanceOf[ActorRef]
@@ -84,7 +97,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private abstract class FilterBankActor(nextActor: ActorRef) extends AkkaActor[FilterBankConfig.Message] {
+  private abstract class FilterBankActor(nextActor: ActorRef) extends AkkaActor[Msg] {
 
     protected override def onPostStart() {
       AkkaActorState.startActor(nextActor)
@@ -100,7 +113,7 @@ object FilterBankAkkaActorBenchmark {
     private final val maxValue: Int = 1000
     private var current: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: FilterBankConfig.BootMessage =>
           nextActor ! new FilterBankConfig.ValueMessage(current)
@@ -115,11 +128,11 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class SinkActor(printRate: Int) extends AkkaActor[FilterBankConfig.Message] {
+  private class SinkActor(printRate: Int) extends AkkaActor[Msg] {
 
     private var count: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.ValueMessage =>
           val result: Double = message.value
@@ -136,7 +149,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef) extends AkkaActor[FilterBankConfig.Message] {
+  private class BranchesActor(numChannels: Int, numColumns: Int, H: Array[Array[Double]], F: Array[Array[Double]], nextActor: ActorRef) extends AkkaActor[Msg] {
 
     private final val banks = Array.tabulate[ActorRef](numChannels)(i => {
       context.system.actorOf(Props(new BankActor(i, numColumns, H(i), F(i), nextActor)))
@@ -154,7 +167,7 @@ object FilterBankAkkaActorBenchmark {
       }
     }
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: FilterBankConfig.ValueMessage =>
           for (loopBank <- banks) {
@@ -169,7 +182,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef) extends AkkaActor[FilterBankConfig.Message] {
+  private class BankActor(sourceId: Int, numColumns: Int, H: Array[Double], F: Array[Double], integrator: ActorRef) extends AkkaActor[Msg] {
 
     private final val firstActor = context.system.actorOf(Props(new DelayActor(sourceId + ".1", numColumns - 1,
       context.system.actorOf(Props(new FirFilterActor(sourceId + ".1", numColumns, H,
@@ -186,7 +199,7 @@ object FilterBankAkkaActorBenchmark {
       firstActor ! ExitMessage.ONLY
     }
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: FilterBankConfig.ValueMessage =>
           firstActor ! theMsg
@@ -204,7 +217,7 @@ object FilterBankAkkaActorBenchmark {
     private final val state = Array.tabulate[Double](delayLength)(i => 0)
     private var placeHolder: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.ValueMessage =>
           val result: Double = message.value
@@ -226,7 +239,7 @@ object FilterBankAkkaActorBenchmark {
     private var dataIndex: Int = 0
     private var dataFull: Boolean = false
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.ValueMessage =>
           val result: Double = message.value
@@ -260,7 +273,7 @@ object FilterBankAkkaActorBenchmark {
 
     private var samplesReceived: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case _: FilterBankConfig.ValueMessage =>
           if (samplesReceived == 0) {
@@ -280,7 +293,7 @@ object FilterBankAkkaActorBenchmark {
 
   private class TaggedForwardActor(sourceId: Int, nextActor: ActorRef) extends FilterBankActor(nextActor) {
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.ValueMessage =>
           val result: Double = message.value
@@ -299,7 +312,7 @@ object FilterBankAkkaActorBenchmark {
     private final val data = new java.util.ArrayList[util.Map[Integer, Double]]
     private var exitsReceived: Int = 0
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.SourcedValueMessage =>
           val sourceId: Int = message.sourceId
@@ -340,7 +353,7 @@ object FilterBankAkkaActorBenchmark {
 
   private class CombineActor(nextActor: ActorRef) extends FilterBankActor(nextActor) {
 
-    override def process(theMsg: FilterBankConfig.Message) {
+    override def process(theMsg: Msg) {
       theMsg match {
         case message: FilterBankConfig.CollectionMessage[_] =>
           val result = message.values.asInstanceOf[util.Collection[Double]]

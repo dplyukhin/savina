@@ -2,8 +2,10 @@ package edu.rice.habanero.benchmarks.philosopher
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 /**
@@ -52,21 +54,24 @@ object PhilosopherAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
+  trait Msg extends Message
+  case class StartMessage() extends Msg with NoRefs
 
-  case class StartMessage()
+  case class ExitMessage() extends Msg with NoRefs
 
-  case class ExitMessage()
+  case class HungryMessage(philosopher: ActorRef[Msg], philosopherId: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(philosopher)
+  }
 
-  case class HungryMessage(philosopher: ActorRef, philosopherId: Int)
+  case class DoneMessage(philosopherId: Int) extends Msg with NoRefs
 
-  case class DoneMessage(philosopherId: Int)
+  case class EatMessage() extends Msg with NoRefs
 
-  case class EatMessage()
-
-  case class DeniedMessage()
+  case class DeniedMessage() extends Msg with NoRefs
 
 
   private class PhilosopherActor(id: Int, rounds: Int, counter: AtomicLong, arbitrator: ActorRef) extends AkkaActor[AnyRef] {

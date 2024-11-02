@@ -1,8 +1,9 @@
 package edu.rice.habanero.benchmarks.bitonicsort
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.philosopher.PhilosopherAkkaActorBenchmark.ExitMessage
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
 import scala.collection.mutable.ListBuffer
@@ -47,16 +48,17 @@ object BitonicSortAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
-  private case class NextActorMessage(actor: ActorRef)
-
-  private case class ValueMessage(value: Long)
-
-  private case class DataMessage(orderId: Int, value: Long)
-
-  private case class StartMessage()
+  trait Msg extends Message
+  private case class NextActorMessage(actor: ActorRef[Msg]) extends Msg {
+    def refs: Seq[ActorRef[Msg]] = Seq(actor)
+  }
+  private case class ValueMessage(value: Long) extends Msg with NoRefs
+  private case class DataMessage(orderId: Int, value: Long) extends Msg with NoRefs
+  private case class StartMessage() extends Msg with NoRefs
 
 
   private class ValueDataAdapterActor(orderId: Int, nextActor: ActorRef) extends AkkaActor[AnyRef] {

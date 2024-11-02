@@ -1,8 +1,9 @@
 package edu.rice.habanero.benchmarks.banking
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.banking.BankingConfig._
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
 import scala.collection.mutable.ListBuffer
@@ -38,7 +39,20 @@ object BankingAkkaManualStashActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
+  }
+
+
+  trait Msg extends Message
+  case object StartMessage extends Msg with NoRefs
+  case object StopMessage extends Msg with NoRefs
+  case object ReplyMessage extends Msg with NoRefs
+  case class DebitMessage(sender: ActorRef[Msg], amount: Double) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = Some(sender)
+  }
+  case class CreditMessage(sender: ActorRef[Msg], amount: Double, recipient: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender, recipient)
   }
 
   protected class Teller(numAccounts: Int, numBankings: Int) extends AkkaActor[AnyRef] {

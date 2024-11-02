@@ -1,7 +1,9 @@
 package edu.rice.habanero.benchmarks.sieve
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 /**
@@ -33,27 +35,33 @@ object SieveAkkaActorBenchmark {
       val filterActor = system.actorOf(Props(new PrimeFilterActor(1, 2, SieveConfig.M)))
       AkkaActorState.startActor(filterActor)
 
-      producerActor ! filterActor
+      producerActor ! RefMsg(filterActor)
 
       AkkaActorState.awaitTermination(system)
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
-  case class LongBox(value: Long)
+  trait Msg extends Message
+  case class LongBox(value: Long) extends Msg with NoRefs
+  case class RefMsg(actorRef: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(actorRef)
+  }
+  case class StringMsg(value: String) extends Msg with NoRefs
 
   private class NumberProducerActor(limit: Long) extends AkkaActor[AnyRef] {
     override def process(msg: AnyRef) {
       msg match {
-        case filterActor: ActorRef =>
+        case RefMsg(filterActor) =>
           var candidate: Long = 3
           while (candidate < limit) {
             filterActor ! LongBox(candidate)
             candidate += 2
           }
-          filterActor ! "EXIT"
+          filterActor ! StringMsg("EXIT")
           exit()
       }
     }
@@ -95,10 +103,10 @@ object SieveAkkaActorBenchmark {
                 handleNewPrime(candidate.value)
               }
             }
-          case x: String =>
+          case StringMsg(x) =>
             if (nextFilterActor != null) {
               // Signal next actor for termination
-              nextFilterActor ! x
+              nextFilterActor ! msg
             } else {
               val totalPrimes = ((id - 1) * numMaxLocalPrimes) + availableLocalPrimes
               println("Total primes = " + totalPrimes)

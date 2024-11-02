@@ -2,8 +2,10 @@ package edu.rice.habanero.benchmarks.uct
 
 import java.util.Random
 
-import akka.actor.{ActorRef, ActorSystem, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.uct.UctConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
@@ -37,8 +39,24 @@ object UctAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case object GetIdMessage extends Msg with NoRefs
+  private case object PrintInfoMessage extends Msg with NoRefs
+  private case object GenerateTreeMessage extends Msg with NoRefs
+  private case object TryGenerateChildrenMessage extends Msg with NoRefs
+  private case class GenerateChildrenMessage(currentId: Int, compSize: Int) extends Msg with NoRefs
+  private case class UrgentGenerateChildrenMessage(urgentChildId: Int, currentId: Int, compSize: Int) extends Msg with NoRefs
+  private case object TraverseMessage extends Msg with NoRefs
+  private case object UrgentTraverseMessage extends Msg with NoRefs
+  private case class ShouldGenerateChildrenMessage(sender: ActorRef[Msg], childHeight: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender)
+  }
+  private case class UpdateGrantMessage(childId: Int) extends Msg with NoRefs
+  private case object TerminateMessage extends Msg with NoRefs
 
   /**
    * @author xinghuizhao

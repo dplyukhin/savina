@@ -1,8 +1,9 @@
 package edu.rice.habanero.benchmarks.cigsmok
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.cigsmok.CigaretteSmokerConfig.{ExitMessage, StartMessage, StartSmoking, StartedSmoking}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
 /**
@@ -38,8 +39,17 @@ object CigaretteSmokerAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case class StartSmoking(val busyWaitPeriod: Int) extends Msg with NoRefs
+  private case object StartedSmoking extends Msg with NoRefs
+  private case object StartMessage extends Msg with NoRefs
+  private case object ExitMessage extends Msg with NoRefs
+
+  protected class ExitMessage {}
 
   private class ArbiterActor(numRounds: Int, numSmokers: Int) extends AkkaActor[AnyRef] {
 

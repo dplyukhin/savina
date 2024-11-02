@@ -2,9 +2,10 @@ package edu.rice.habanero.benchmarks.barber
 
 import java.util.concurrent.atomic.AtomicLong
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.barber.SleepingBarberConfig._
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
 import scala.collection.mutable.ListBuffer
@@ -51,13 +52,24 @@ object SleepingBarberAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
 
 
-  private case class Enter(customer: ActorRef, room: ActorRef)
-
-  private case class Returned(customer: ActorRef)
+  trait Msg extends Message
+  case object Full extends Msg with NoRefs
+  case object Wait extends Msg with NoRefs
+  case object Next extends Msg with NoRefs
+  case object Start extends Msg with NoRefs
+  case object Done extends Msg with NoRefs
+  case object Exit extends Msg with NoRefs
+  case class Enter(customer: ActorRef[Msg], room: ActorRef[Msg]) extends Msg {
+    def refs: Iterable[ActorRef[_]] = List(customer, room)
+  }
+  case class Returned(customer: ActorRef[Msg]) extends Msg {
+    def refs: Iterable[ActorRef[_]] = List(customer)
+  }
 
 
   private class WaitingRoomActor(capacity: Int, barber: ActorRef) extends AkkaActor[AnyRef] {

@@ -1,8 +1,9 @@
 package edu.rice.habanero.benchmarks.concsll
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.concsll.SortedListConfig.{DoWorkMessage, EndWorkMessage}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
 /**
@@ -36,8 +37,25 @@ object SortedListAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case class WriteMessage(sender: ActorRef[Msg], value: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender)
+  }
+  private case class ContainsMessage(sender: ActorRef[Msg], value: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender)
+  }
+  private case class SizeMessage(sender: ActorRef[Msg]) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender)
+  }
+  private case class ResultMessage(sender: ActorRef[Msg], value: Int) extends Msg {
+    override def refs: Iterable[ActorRef[_]] = List(sender)
+  }
+  private case object DoWorkMessage extends Msg with NoRefs
+  private case object EndWorkMessage extends Msg with NoRefs
 
   private class Master(numWorkers: Int, numMessagesPerWorker: Int) extends AkkaActor[AnyRef] {
 

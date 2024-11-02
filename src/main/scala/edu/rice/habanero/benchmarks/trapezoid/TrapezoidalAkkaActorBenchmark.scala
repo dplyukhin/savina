@@ -1,8 +1,9 @@
 package edu.rice.habanero.benchmarks.trapezoid
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
-import edu.rice.habanero.benchmarks.trapezoid.TrapezoidalConfig.{ResultMessage, WorkMessage}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 /**
@@ -39,8 +40,13 @@ object TrapezoidalAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
   }
+
+  private trait Msg extends Message
+  private case class WorkMessage(l: Double, r: Double, h: Double) extends Msg with NoRefs
+  private case class ResultMessage(result: Double, workerId: Int) extends Msg with NoRefs
 
   private class Master(numWorkers: Int) extends AkkaActor[AnyRef] {
 

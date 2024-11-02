@@ -1,7 +1,9 @@
 package edu.rice.habanero.benchmarks.bndbuffer
 
-import akka.actor.{ActorRef, Props}
-import edu.rice.habanero.actors.{AkkaActor, AkkaActorState}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.uigc.actor.typed._
+import org.apache.pekko.uigc.actor.typed.scaladsl._
+import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.bndbuffer.ProdConsBoundedBufferConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
@@ -42,7 +44,20 @@ object ProdConsAkkaActorBenchmark {
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
+      AkkaActorState.awaitTermination(system)
     }
+
+    private trait Msg extends Message
+    private case class DataItemMessage(d: Double, ref: ActorRef[Msg]) extends Msg {
+      override def refs: Iterable[ActorRef[_]] = Some(ref)
+    }
+    private case object ProduceDataMessage extends Msg with NoRefs
+    private case object ProducerExitMessage extends Msg with NoRefs
+    private case class ConsumerAvailableMessage(ref: ActorRef[Msg]) extends Msg {
+      override def refs: Iterable[ActorRef[_]] = Some(ref)
+    }
+    private case object ConsumerExitMessage extends Msg with NoRefs
+
 
     private class ManagerActor(bufferSize: Int, numProducers: Int, numConsumers: Int, numItemsPerProducer: Int) extends AkkaActor[AnyRef] {
 
