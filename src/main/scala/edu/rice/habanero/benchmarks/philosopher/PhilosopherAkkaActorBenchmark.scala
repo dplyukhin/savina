@@ -1,12 +1,13 @@
 package edu.rice.habanero.benchmarks.philosopher
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -30,8 +31,9 @@ object PhilosopherAkkaActorBenchmark {
     def runIteration() {
 
       val counter = new AtomicLong(0)
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(counter, ctx)), "Philosopher")
-      AkkaActorState.awaitTermination(system)
+      val latch = new  CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(counter, latch, ctx)), "Philosopher")
+      latch.await()
 
       println("  Num retries: " + counter.get())
       track("Avg. Retry Count", counter.get())
@@ -60,9 +62,9 @@ object PhilosopherAkkaActorBenchmark {
 
   case class DeniedMessage() extends Msg with NoRefs
 
-  private class Master(counter: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(counter: AtomicLong, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
-      val arbitrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ArbitratorActor(PhilosopherConfig.N, ctx) })
+      val arbitrator = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ArbitratorActor(PhilosopherConfig.N, latch, ctx) })
       val philosophers = Array.tabulate[ActorRef[Msg]](PhilosopherConfig.N)(i => {
         val loopActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PhilosopherActor(i, PhilosopherConfig.M, counter, ctx) })
         loopActor ! Rfmsg(ctx.createRef(arbitrator, loopActor))
@@ -113,7 +115,7 @@ object PhilosopherAkkaActorBenchmark {
     }
   }
 
-  private class ArbitratorActor(numForks: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class ArbitratorActor(numForks: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val forks = Array.tabulate(numForks)(i => new AtomicBoolean(false))
     private var numExitedPhilosophers = 0
@@ -145,7 +147,7 @@ object PhilosopherAkkaActorBenchmark {
 
           numExitedPhilosophers += 1
           if (numForks == numExitedPhilosophers) {
-            exit()
+            latch.countDown()
           }
       }
     }

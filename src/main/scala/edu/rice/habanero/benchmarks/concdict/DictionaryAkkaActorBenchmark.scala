@@ -1,13 +1,14 @@
 package edu.rice.habanero.benchmarks.concdict
 
 import java.util
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.concdict.DictionaryConfig.DATA_LIMIT
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -32,13 +33,13 @@ object DictionaryAkkaActorBenchmark {
       val numWorkers: Int = DictionaryConfig.NUM_ENTITIES
       val numMessagesPerWorker: Int = DictionaryConfig.NUM_MSGS_PER_WORKER
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new Master(numWorkers, numMessagesPerWorker, ctx)
+          new Master(numWorkers, numMessagesPerWorker, latch, ctx)
         ),
         "Dictionary")
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -65,7 +66,7 @@ object DictionaryAkkaActorBenchmark {
   private case object EndWorkMessage extends Msg with NoRefs
 
 
-  private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(numWorkers: Int, numMessagesPerWorker: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
     private final val dictionary = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Dictionary(DictionaryConfig.DATA_MAP, ctx)})
@@ -86,7 +87,7 @@ object DictionaryAkkaActorBenchmark {
         case EndWorkMessage =>
           numWorkersTerminated += 1
           if (numWorkersTerminated == numWorkers) {
-            dictionary ! EndWorkMessage
+            latch.countDown()
             exit()
           }
         case _ =>

@@ -6,6 +6,7 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -30,13 +31,12 @@ object BankingAkkaManualStashActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
-        Behaviors.setupRoot(ctx => new Teller(BankingConfig.A, BankingConfig.N, ctx)),
+        Behaviors.setupRoot(ctx => new Teller(BankingConfig.A, BankingConfig.N, latch, ctx)),
         "Banking")
-
       system ! StartMessage
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -56,7 +56,7 @@ object BankingAkkaManualStashActorBenchmark {
     override def refs: Iterable[ActorRef[_]] = List(sender, recipient)
   }
 
-  protected class Teller(numAccounts: Int, numBankings: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  protected class Teller(numAccounts: Int, numBankings: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val accounts = Array.tabulate[ActorRef[Msg]](numAccounts)((i) => {
       ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Account(i, BankingConfig.INITIAL_BALANCE, ctx) })
@@ -80,8 +80,7 @@ object BankingAkkaManualStashActorBenchmark {
 
           numCompletedBankings += 1
           if (numCompletedBankings == numBankings) {
-            accounts.foreach(loopAccount => loopAccount ! StopMessage)
-            exit()
+            latch.countDown()
           }
 
         case message =>

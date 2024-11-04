@@ -1,13 +1,14 @@
 package edu.rice.habanero.benchmarks.logmap
 
 import java.util
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.logmap.LogisticMapConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -30,14 +31,14 @@ object LogisticMapAkkaManualStashActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new Master(ctx)
+          new Master(latch, ctx)
         ),
         "LogisticMap")
       system ! StartMessage
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -58,7 +59,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
   }
   private case class ResultMessage(term: Double) extends Msg with NoRefs
 
-  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val numComputers: Int = LogisticMapConfig.numSeries
     private final val computers = Array.tabulate[ActorRef[Msg]](numComputers)(i => {
@@ -106,14 +107,7 @@ object LogisticMapAkkaManualStashActorBenchmark {
           if (numWorkRequested == numWorkReceived) {
 
             println("Terms sum: " + termsSum)
-
-            computers.foreach(loopComputer => {
-              loopComputer ! StopMessage
-            })
-            workers.foreach(loopWorker => {
-              loopWorker ! StopMessage
-            })
-            exit()
+            latch.countDown()
           }
 
         case message =>

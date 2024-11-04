@@ -6,6 +6,8 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
+import java.util.concurrent.CountDownLatch
+
 /**
  *
  * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
@@ -30,14 +32,14 @@ object TrapezoidalAkkaActorBenchmark {
       val numWorkers: Int = TrapezoidalConfig.W
       val precision: Double = (TrapezoidalConfig.R - TrapezoidalConfig.L) / TrapezoidalConfig.N
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new Master(numWorkers, ctx)
+          new Master(numWorkers, latch, ctx)
         ),
         "Trapezoidal")
       system ! new WorkMessage(TrapezoidalConfig.L, TrapezoidalConfig.R, precision)
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -52,7 +54,7 @@ object TrapezoidalAkkaActorBenchmark {
   private case class WorkMessage(l: Double, r: Double, h: Double) extends Msg with NoRefs
   private case class ResultMessage(result: Double, workerId: Int) extends Msg with NoRefs
 
-  private class Master(numWorkers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(numWorkers: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, ctx)})
@@ -71,7 +73,7 @@ object TrapezoidalAkkaActorBenchmark {
 
           if (numTermsReceived == numWorkers) {
             println("  Area: " + resultArea)
-            exit()
+            latch.countDown()
           }
 
         case wm: WorkMessage =>

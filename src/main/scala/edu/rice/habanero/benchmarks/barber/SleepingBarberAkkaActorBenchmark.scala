@@ -1,13 +1,13 @@
 package edu.rice.habanero.benchmarks.barber
 
 import java.util.concurrent.atomic.AtomicLong
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -35,8 +35,9 @@ object SleepingBarberAkkaActorBenchmark {
 
       val idGenerator = new AtomicLong(0)
 
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(idGenerator, ctx)), "SleepingBarber")
-      AkkaActorState.awaitTermination(system)
+      val latch = new CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(idGenerator, latch, ctx)), "SleepingBarber")
+      latch.await()
 
       track("CustomerAttempts", idGenerator.get())
     }
@@ -64,11 +65,11 @@ object SleepingBarberAkkaActorBenchmark {
     def refs: Iterable[ActorRef[_]] = List(customer)
   }
 
-  private class Master(idGenerator: AtomicLong, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(idGenerator: AtomicLong, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
       val barber = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BarberActor(ctx) })
       val room = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new WaitingRoomActor(SleepingBarberConfig.W, barber, ctx) })
-      val factoryActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room, ctx) })
+      val factoryActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room, latch, ctx) })
       factoryActor ! Start
     }
 
@@ -159,7 +160,7 @@ object SleepingBarberAkkaActorBenchmark {
   }
 
   private class CustomerFactoryActor(idGenerator: AtomicLong, haircuts: Int, room: ActorRef[Msg],
-                                     ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+                                     latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val random = new PseudoRandom()
     private var numHairCutsSoFar = 0
@@ -185,8 +186,7 @@ object SleepingBarberAkkaActorBenchmark {
           numHairCutsSoFar += 1
           if (numHairCutsSoFar == haircuts) {
             println("Total attempts: " + idGenerator.get())
-            room ! Exit
-            exit()
+            latch.countDown()
           }
       }
     }

@@ -1,13 +1,14 @@
 package edu.rice.habanero.benchmarks.uct
 
 import java.util.Random
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.uct.UctConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
@@ -29,14 +30,14 @@ object UctAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new RootActor(ctx)
+          new RootActor(latch, ctx)
         ),
         "UCT")
       system ! GenerateTreeMessage
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -66,7 +67,7 @@ object UctAkkaActorBenchmark {
    * @author xinghuizhao
    * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
    */
-  private class RootActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class RootActor(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val ran: Random = new Random(2)
     private var height: Int = 1
@@ -161,7 +162,7 @@ object UctAkkaActorBenchmark {
           traversed = true
           traverse()
         }
-        terminateMe()
+        latch.countDown()
       }
     }
 

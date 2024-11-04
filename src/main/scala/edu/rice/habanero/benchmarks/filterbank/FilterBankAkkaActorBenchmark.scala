@@ -8,6 +8,7 @@ import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
 import java.util.Collection
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -30,10 +31,9 @@ object FilterBankAkkaActorBenchmark {
     }
     private var system: ActorSystem[Msg] = _
     def runIteration() {
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "FilterBank")
-
-
-      AkkaActorState.awaitTermination(system)
+      val latch = new CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(latch, ctx)), "FilterBank")
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double): Unit = {
@@ -59,7 +59,7 @@ object FilterBankAkkaActorBenchmark {
   private case class CollectionMessage[T](values: util.Collection[T]) extends Msg with NoRefs
 
 
-  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
       val numSimulations: Int = FilterBankConfig.NUM_SIMULATIONS
       val numChannels: Int = FilterBankConfig.NUM_CHANNELS
@@ -77,7 +77,7 @@ object FilterBankAkkaActorBenchmark {
       integrator ! Rfmsg(ctx.createRef(combine, integrator))
       val branches = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BranchesActor(numChannels, numColumns, H, F, ctx) })
       branches ! Rfmsg(ctx.createRef(integrator, branches))
-      val source = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SourceActor(ctx) })
+      val source = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SourceActor(latch, ctx) })
       source ! ProducerNextActorMsg(ctx.createRef(producer, source), ctx.createRef(branches, source))
 
       // start the pipeline
@@ -109,7 +109,7 @@ object FilterBankAkkaActorBenchmark {
     }
   }
 
-  private class SourceActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class SourceActor(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var producer: ActorRef[Msg] = _
     private var nextActor: ActorRef[Msg] = _
@@ -126,7 +126,7 @@ object FilterBankAkkaActorBenchmark {
           current = (current + 1) % maxValue
           producer ! new NextMessage(ctx.createRef(ctx.self, producer))
         case ExitMessage =>
-          exit()
+          latch.countDown()
         case message =>
           val ex = new IllegalArgumentException("Unsupported message: " + message)
           ex.printStackTrace(System.err)

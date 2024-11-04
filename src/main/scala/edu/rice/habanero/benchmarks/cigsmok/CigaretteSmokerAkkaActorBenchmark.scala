@@ -6,6 +6,8 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
+import java.util.concurrent.CountDownLatch
+
 /**
  * Based on solution in <a href="http://en.wikipedia.org/wiki/Cigarette_smokers_problem">Wikipedia</a> where resources are acquired instantaneously.
  *
@@ -28,14 +30,14 @@ object CigaretteSmokerAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S, ctx)
+          new ArbiterActor(CigaretteSmokerConfig.R, CigaretteSmokerConfig.S, latch, ctx)
         ),
         "CigaretteSmoker")
       system ! StartMessage
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -52,9 +54,7 @@ object CigaretteSmokerAkkaActorBenchmark {
   private case object StartMessage extends Msg with NoRefs
   private case object ExitMessage extends Msg with NoRefs
 
-  protected class ExitMessage {}
-
-  private class ArbiterActor(numRounds: Int, numSmokers: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class ArbiterActor(numRounds: Int, numSmokers: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val smokerActors = Array.tabulate[ActorRef[Msg]](numSmokers)(i => {
       val actor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SmokerActor(ctx) })
@@ -76,9 +76,7 @@ object CigaretteSmokerAkkaActorBenchmark {
           // resources are off the table, can place new ones on the table
           roundsSoFar += 1
           if (roundsSoFar >= numRounds) {
-            // had enough, now exit
-            requestSmokersToExit()
-            exit()
+            latch.countDown()
           } else {
             // choose a random smoker to start smoking
             notifyRandomSmoker()
@@ -112,7 +110,7 @@ object CigaretteSmokerAkkaActorBenchmark {
           // now smoke cigarette
           CigaretteSmokerConfig.busyWait(sm.busyWaitPeriod)
 
-        case em: ExitMessage =>
+        case ExitMessage =>
 
           exit()
       }

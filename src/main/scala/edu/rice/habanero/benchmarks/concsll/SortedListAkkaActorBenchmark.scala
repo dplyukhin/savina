@@ -6,6 +6,8 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
+import java.util.concurrent.CountDownLatch
+
 /**
  *
  * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
@@ -29,13 +31,13 @@ object SortedListAkkaActorBenchmark {
       val numWorkers: Int = SortedListConfig.NUM_ENTITIES
       val numMessagesPerWorker: Int = SortedListConfig.NUM_MSGS_PER_WORKER
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new Master(numWorkers, numMessagesPerWorker, ctx)
+          new Master(numWorkers, numMessagesPerWorker, latch, ctx)
         ),
         "SortedList")
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -62,7 +64,7 @@ object SortedListAkkaActorBenchmark {
   private case object DoWorkMessage extends Msg with NoRefs
   private case object EndWorkMessage extends Msg with NoRefs
 
-  private class Master(numWorkers: Int, numMessagesPerWorker: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(numWorkers: Int, numMessagesPerWorker: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = new Array[ActorRef[Msg]](numWorkers)
     private final val sortedList = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new SortedList(ctx)})
@@ -83,7 +85,7 @@ object SortedListAkkaActorBenchmark {
         case EndWorkMessage =>
           numWorkersTerminated += 1
           if (numWorkersTerminated == numWorkers) {
-            sortedList ! EndWorkMessage
+            latch.countDown()
             exit()
           }
         case _ =>

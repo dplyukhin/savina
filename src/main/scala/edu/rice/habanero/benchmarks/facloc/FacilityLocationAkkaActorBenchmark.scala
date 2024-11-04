@@ -2,13 +2,14 @@ package edu.rice.habanero.benchmarks.facloc
 
 import java.util
 import java.util.function.Consumer
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.facloc.FacilityLocationConfig.{Box, Point, Position}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -31,9 +32,9 @@ object FacilityLocationAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "FacilityLocation")
-
-      AkkaActorState.awaitTermination(system)
+      val latch = new CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(latch, ctx)), "FacilityLocation")
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -56,7 +57,7 @@ object FacilityLocationAkkaActorBenchmark {
   private case class ConfirmExitMsg(facilities: Int, supportCustomers: Int) extends Msg with NoRefs
 
 
-  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
 
       val threshold = FacilityLocationConfig.ALPHA * FacilityLocationConfig.F
@@ -66,13 +67,13 @@ object FacilityLocationAkkaActorBenchmark {
         Position.ROOT, boundingBox, threshold, 0,
         new java.util.ArrayList[Point](), 1, -1, new java.util.ArrayList[Point](), ctx)))
 
-      val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(ctx) })
+      val producer = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ProducerActor(latch, ctx) })
       producer ! Rfmsg(ctx.createRef(rootQuadrant, producer))
     }
     override def process(msg: Msg): Unit = ()
   }
 
-  private class ProducerActor(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class ProducerActor(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var consumer: ActorRef[Msg] = _
     private var itemsProduced = 0
@@ -91,8 +92,7 @@ object FacilityLocationAkkaActorBenchmark {
           if (itemsProduced < FacilityLocationConfig.NUM_POINTS) {
             produceCustomer()
           } else {
-            consumer ! (RequestExitMsg())
-            exit()
+            latch.countDown()
           }
       }
     }

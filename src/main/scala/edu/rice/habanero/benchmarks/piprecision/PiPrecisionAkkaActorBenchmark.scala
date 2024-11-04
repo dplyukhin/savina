@@ -2,12 +2,13 @@ package edu.rice.habanero.benchmarks.piprecision
 
 import java.math.BigDecimal
 import java.util.concurrent.atomic.AtomicInteger
-
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.uigc.actor.typed._
 import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
+
+import java.util.concurrent.CountDownLatch
 
 /**
  *
@@ -32,14 +33,14 @@ object PiPrecisionAkkaActorBenchmark {
       val numWorkers: Int = PiPrecisionConfig.NUM_WORKERS
       val precision: Int = PiPrecisionConfig.PRECISION
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new Master(numWorkers, precision, ctx)
+          new Master(numWorkers, precision, latch, ctx)
         ),
         "PiPrecision")
       system ! StartMessage
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -57,7 +58,7 @@ object PiPrecisionAkkaActorBenchmark {
   private case class WorkMessage(scale: Int, term: Int) extends Msg with NoRefs
   private case class ResultMessage(result: BigDecimal, workerId: Int) extends Msg with NoRefs
 
-  private class Master(numWorkers: Int, scale: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(numWorkers: Int, scale: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private final val workers = Array.tabulate[ActorRef[Msg]](numWorkers)(i => {
       val a = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new Worker(i, ctx) })
@@ -101,7 +102,7 @@ object PiPrecisionAkkaActorBenchmark {
             generateWork(rm.workerId)
           }
           if (numTermsReceived == numTermsRequested) {
-            requestWorkersToExit()
+            latch.countDown()
           }
         case StopMessage =>
           val numTerminated: Int = numWorkersTerminated.incrementAndGet

@@ -7,6 +7,7 @@ import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.bndbuffer.ProdConsBoundedBufferConfig._
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -28,6 +29,7 @@ object ProdConsAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
           new ManagerActor(
@@ -35,11 +37,11 @@ object ProdConsAkkaActorBenchmark {
             ProdConsBoundedBufferConfig.numProducers,
             ProdConsBoundedBufferConfig.numConsumers,
             ProdConsBoundedBufferConfig.numItemsPerProducer,
+            latch,
             ctx)
         ),
         "ProdCons")
-
-      AkkaActorState.awaitTermination(system)
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -62,7 +64,7 @@ object ProdConsAkkaActorBenchmark {
 
 
     private class ManagerActor(bufferSize: Int, numProducers: Int, numConsumers: Int, numItemsPerProducer: Int,
-                               ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+                               latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
 
       private val adjustedBufferSize: Int = bufferSize - numProducers
@@ -134,7 +136,7 @@ object ProdConsAkkaActorBenchmark {
 
       def tryExit() {
         if (numTerminatedProducers == numProducers && availableConsumers.size == numConsumers) {
-          exit()
+          latch.countDown()
         }
       }
     }

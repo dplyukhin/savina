@@ -6,6 +6,8 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
+import java.util.concurrent.CountDownLatch
+
 /**
  *
  * @author <a href="http://shams.web.rice.edu/">Shams Imam</a> (shams@rice.edu)
@@ -27,9 +29,9 @@ object SieveAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "Sieve")
-
-      AkkaActorState.awaitTermination(system)
+      val latch = new CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(latch, ctx)), "Sieve")
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -45,10 +47,10 @@ object SieveAkkaActorBenchmark {
   case class StringMsg(value: String) extends Msg with NoRefs
 
 
-  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
       val producerActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new NumberProducerActor(SieveConfig.N, ctx) })
-      val filterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(1, 2, SieveConfig.M, ctx) })
+      val filterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(1, 2, SieveConfig.M, latch, ctx) })
       producerActor ! RefMsg(ctx.createRef(filterActor, producerActor))
     }
     override def process(msg: Msg): Unit = ()
@@ -69,7 +71,7 @@ object SieveAkkaActorBenchmark {
     }
   }
 
-  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class PrimeFilterActor(val id: Int, val myInitialPrime: Long, numMaxLocalPrimes: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     var nextFilterActor: ActorRef[Msg] = null
     val localPrimes = new Array[Long](numMaxLocalPrimes)
@@ -86,7 +88,7 @@ object SieveAkkaActorBenchmark {
         availableLocalPrimes += 1
       } else {
         // Create a new actor to store the new prime
-        nextFilterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, ctx)})
+        nextFilterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new PrimeFilterActor(id + 1, newPrime, numMaxLocalPrimes, latch, ctx)})
       }
     }
 
@@ -111,6 +113,7 @@ object SieveAkkaActorBenchmark {
             } else {
               val totalPrimes = ((id - 1) * numMaxLocalPrimes) + availableLocalPrimes
               println("Total primes = " + totalPrimes)
+              latch.countDown()
             }
             if (SieveConfig.debug)
               println("Terminating prime actor for number " + myInitialPrime)
