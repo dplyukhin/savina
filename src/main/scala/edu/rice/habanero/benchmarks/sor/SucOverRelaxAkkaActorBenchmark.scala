@@ -6,6 +6,7 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner}
 
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -30,16 +31,14 @@ object SucOverRelaxAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
       val dataLevel = SucOverRelaxConfig.N
+      val latch = new CountDownLatch(1)
       system = AkkaActorState.newTypedActorSystem(
         Behaviors.setupRoot(ctx =>
-          new SorRunner(dataLevel, ctx)
+          new SorRunner(dataLevel, latch, ctx)
         ),
         "SucOverRelax")
       system ! SorBootMessage
-
-      println("pre-AkkaActorState.awaitTermination")
-      AkkaActorState.awaitTermination(system)
-      println("post-AkkaActorState.awaitTermination")
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double): Unit = {
@@ -64,7 +63,7 @@ object SucOverRelaxAkkaActorBenchmark {
   case object SorBootMessage extends Msg with NoRefs
   case class SorResultMessage(mx: Int, my: Int, mv: Double, msgRcv: Int) extends Msg with NoRefs
 
-  private class SorRunner(n: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class SorRunner(n: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private val s = SucOverRelaxConfig.DATA_SIZES(n)
     private val part = s / 2
@@ -120,7 +119,7 @@ object SucOverRelaxAkkaActorBenchmark {
           gTotal += mv
           if (returned == (s * part) + 1) {
             SucOverRelaxConfig.jgfValidate(gTotal, n)
-            exit()
+            latch.countDown()
           }
         case SorBorderMessage(mBorder) =>
           if (expectingBoot) {
