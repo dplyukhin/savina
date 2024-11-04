@@ -6,6 +6,7 @@ import org.apache.pekko.uigc.actor.typed.scaladsl._
 import edu.rice.habanero.actors.{AkkaActor, AkkaActorState, GCActor}
 import edu.rice.habanero.benchmarks.{Benchmark, BenchmarkRunner, PseudoRandom}
 
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -28,9 +29,9 @@ object BitonicSortAkkaActorBenchmark {
     private var system: ActorSystem[Msg] = _
     def runIteration() {
 
-      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(ctx)), "BitonicSort")
-
-      AkkaActorState.awaitTermination(system)
+      val latch = new CountDownLatch(1)
+      system = AkkaActorState.newTypedActorSystem(Behaviors.setupRoot[Msg](ctx => new Master(latch, ctx)), "BitonicSort")
+      latch.await()
     }
 
     def cleanupIteration(lastIteration: Boolean, execTimeMillis: Double) {
@@ -51,9 +52,9 @@ object BitonicSortAkkaActorBenchmark {
   private case class ExitMessage() extends Msg with NoRefs
 
 
-  private class Master(ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class Master(latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
     {
-      val validationActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ValidationActor(BitonicSortConfig.N, ctx) })
+      val validationActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new ValidationActor(BitonicSortConfig.N, latch, ctx) })
       val adapterActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new DataValueAdapterActor(ctx) })
       adapterActor ! Rfmsg(ctx.createRef(validationActor, adapterActor))
       val kernelActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BitonicSortKernelActor(BitonicSortConfig.N, true, ctx) })
@@ -587,7 +588,7 @@ object BitonicSortAkkaActorBenchmark {
     }
   }
 
-  private class ValidationActor(numValues: Int, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
+  private class ValidationActor(numValues: Int, latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
     private var sumSoFar = 0.0
     private var valuesSoFar = 0
@@ -625,7 +626,8 @@ object BitonicSortAkkaActorBenchmark {
           } else {
             println("  ERROR: early exit triggered, received only " + valuesSoFar + " values!")
           }
-          exit()
+
+          latch.countDown()
       }
     }
   }
