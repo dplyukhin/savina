@@ -200,7 +200,7 @@ object SucOverRelaxAkkaActorBenchmark {
     private var receivedVals = 0
     private var sum = 0.0
     private var expectingStart = true
-    private val pendingMessages = new ListBuffer[Msg]()
+    private val pendingMessages = new ListBuffer[Msg with NoRefs]()
 
     override def process(msg: Msg) {
       msg match {

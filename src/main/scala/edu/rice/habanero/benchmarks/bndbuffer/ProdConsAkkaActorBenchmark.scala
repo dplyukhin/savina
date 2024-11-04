@@ -104,7 +104,8 @@ object ProdConsAkkaActorBenchmark {
             if (availableConsumers.isEmpty) {
               pendingData.append(dm)
             } else {
-              availableConsumers.remove(0) ! dm
+              val consumer = availableConsumers.remove(0)
+              consumer ! DataItemMessage(dm.data, ctx.createRef(producer, consumer))
             }
             if (pendingData.size >= adjustedBufferSize) {
               availableProducers.append(producer)

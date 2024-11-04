@@ -78,7 +78,7 @@ object FacilityLocationAkkaActorBenchmark {
     private var itemsProduced = 0
 
     private def produceCustomer(): Unit = {
-      consumer ! (CustomerMsg(ctx.createRef(ctx.self, consumer), Point.random(FacilityLocationConfig.GRID_SIZE)))
+      consumer ! CustomerMsg(ctx.createRef(ctx.self, consumer), Point.random(FacilityLocationConfig.GRID_SIZE))
       itemsProduced += 1
     }
 
@@ -152,6 +152,7 @@ object FacilityLocationAkkaActorBenchmark {
 
         case customer: CustomerMsg =>
 
+          val producer = customer.producer
           val point: Point = customer.point
           if (children == null) {
 
@@ -168,7 +169,7 @@ object FacilityLocationAkkaActorBenchmark {
             while (index <= 4) {
               val loopChildBoundary = childrenBoundaries(index)
               if (loopChildBoundary.contains(point)) {
-                children(index) ! (customer)
+                children(index) ! CustomerMsg(ctx.createRef(producer, children(index)), point)
                 index = 5
               } else {
                 index += 1
