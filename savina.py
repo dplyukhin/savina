@@ -18,7 +18,7 @@ benchmarks = {
     "astar.GuidedSearchAkkaGCActorBenchmark": [50],    # [10, 20, 30, 40, 50],
     "banking.BankingAkkaManualStashActorBenchmark": [50_000],
     "barber.SleepingBarberAkkaActorBenchmark": [5_000],
-    "big.BigAkkaActorBenchmark": [20_000],
+    "big.BigAkkaActorBenchmark": [2_000],
     "bitonicsort.BitonicSortAkkaActorBenchmark": [4096],
     "bndbuffer.ProduConsAkkaActorBenchmark": [1000],
     "chameneos.ChameneosAkkaActorBenchmark": [400_000],
@@ -48,9 +48,9 @@ benchmarks = {
 
 # Which benchmarks to skip in the simple evaluation.
 skippable_benchmarks = [
-    "astar.GuidedSearchAkkaGCActorBenchmark",    # This one is slow.
-    "nqueenk.NQueensAkkaGCActorBenchmark",       # This one is slow.
-    "radixsort.RadixSortAkkaGCActorBenchmark",   # This one is not consistent.
+    #"astar.GuidedSearchAkkaGCActorBenchmark",
+    #"nqueenk.NQueensAkkaGCActorBenchmark",
+    #"radixsort.RadixSortAkkaGCActorBenchmark",
 ]
 
 # Pyplot configuration.
@@ -364,14 +364,14 @@ if __name__ == "__main__":
         bms = [bm for bm in benchmarks if bm not in skippable_benchmarks]
         runner = BenchmarkRunner(bms, gc_types, args)
         runner.run_time_benchmarks()
-        runner.process_time_data()
-        runner.plot_time_data()
+        #runner.process_time_data()
+        #runner.plot_time_data()
     elif args.command == "full_eval":
         bms = benchmarks.keys()
         runner = BenchmarkRunner(bms, gc_types, args)
         runner.run_time_benchmarks()
-        runner.process_time_data()
-        runner.plot_time_data()
+        #runner.process_time_data()
+        #runner.plot_time_data()
     else:
         parser.print_help()
 
