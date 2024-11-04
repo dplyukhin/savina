@@ -113,7 +113,7 @@ object BankingAkkaManualStashActorBenchmark {
 
     private var inReplyMode = false
     private var replyTeller: ActorRef[Msg] = null
-    private val stashedMessages = new ListBuffer[Msg with NoRefs]()
+    private val stashedMessages = new ListBuffer[Msg]()
 
     override def process(theMsg: Msg) {
 
@@ -128,14 +128,19 @@ object BankingAkkaManualStashActorBenchmark {
             replyTeller ! ReplyMessage
             if (stashedMessages.nonEmpty) {
               val newMsg = stashedMessages.remove(0)
-              // BUG: What if the message contains references?
               ctx.self ! newMsg
             }
 
           case message =>
 
-            // BUG: What if the message contains references?
-            stashedMessages.append(message)
+            val newMsg = message match {
+              case CreditMessage(sender, amount, recipient) =>
+                CreditMessage(ctx.createRef(sender, ctx.self), amount, ctx.createRef(recipient, ctx.self))
+              case DebitMessage(sender, amount) =>
+                DebitMessage(ctx.createRef(sender, ctx.self), amount)
+              case msg: NoRefs => msg
+            }
+            stashedMessages.append(newMsg)
         }
 
       } else {
@@ -169,7 +174,6 @@ object BankingAkkaManualStashActorBenchmark {
         // recycle stashed messages
         if (!inReplyMode && stashedMessages.nonEmpty) {
           val newMsg = stashedMessages.remove(0)
-          // BUG: What if the message contains references?
           ctx.self ! newMsg
         }
       }
