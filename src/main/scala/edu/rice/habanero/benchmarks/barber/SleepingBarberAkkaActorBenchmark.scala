@@ -69,7 +69,8 @@ object SleepingBarberAkkaActorBenchmark {
     {
       val barber = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new BarberActor(ctx) })
       val room = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new WaitingRoomActor(SleepingBarberConfig.W, barber, ctx) })
-      val factoryActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, room, latch, ctx) })
+      val factoryActor = ctx.spawnAnonymous(Behaviors.setup[Msg] { ctx => new CustomerFactoryActor(idGenerator, SleepingBarberConfig.N, latch, ctx) })
+      factoryActor ! Rfmsg(ctx.createRef(room, factoryActor))
       factoryActor ! Start
     }
 
@@ -159,14 +160,17 @@ object SleepingBarberAkkaActorBenchmark {
     }
   }
 
-  private class CustomerFactoryActor(idGenerator: AtomicLong, haircuts: Int, room: ActorRef[Msg],
+  private class CustomerFactoryActor(idGenerator: AtomicLong, haircuts: Int,
                                      latch: CountDownLatch, ctx: ActorContext[Msg]) extends GCActor[Msg](ctx) {
 
+    private var room: ActorRef[Msg] = _
     private val random = new PseudoRandom()
     private var numHairCutsSoFar = 0
 
     override def process(msg: Msg) {
       msg match {
+        case Rfmsg(x) =>
+          this.room = x
         case Start =>
 
           var i = 0
