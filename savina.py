@@ -40,7 +40,7 @@ benchmarks = {
     "radixsort.RadixSortAkkaGCActorBenchmark": [100_000],       # [50000, 60000, 70000, 80000, 90000],
     "recmatmul.MatMulAkkaGCActorBenchmark": [1024],    # [1024, 512, 256, 128, 64],
     "sieve.SieveAkkaActorBenchmark": [100_000],
-    "sor.SucOverRelaxAkkaActorBenchmark": [0],
+    #"sor.SucOverRelaxAkkaActorBenchmark": [0],        # Skipped due to deadlock
     "threadring.ThreadRingAkkaActorBenchmark": [100],
     "trapezoid.TrapezoidAkkaActorBenchmark": [10_000_000],
     "uct.UctAkkaActorBenchmark": [200_000],
@@ -48,9 +48,6 @@ benchmarks = {
 
 # Which benchmarks to skip in the simple evaluation.
 skippable_benchmarks = [
-    #"astar.GuidedSearchAkkaGCActorBenchmark",
-    #"nqueenk.NQueensAkkaGCActorBenchmark",
-    #"radixsort.RadixSortAkkaGCActorBenchmark",
 ]
 
 # Pyplot configuration.
